@@ -3,6 +3,7 @@
  *    created: 05-06-2024 16:04:18
  **/
 //Question URL: https://codeforces.com/problemset/problem/1975/C
+//Problem Difficulty: 1200
 
 #include<iostream>
 #include<vector>
