@@ -1,0 +1,49 @@
+/**
+ *    author:  MK_20
+ *    created: 05-06-2024 16:04:18
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1975/C
+
+#include<iostream>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+int around(vector<int> v, int index, int n){
+    int st=max(index-2, 0);
+    int end=min(index+3, n);
+    vector<int> tmp(v.begin()+st, v.begin()+end);
+    sort(tmp.begin(), tmp.end());
+    return *(tmp.end()-2);
+}
+
+void solve(){
+    int n;
+    cin>>n;
+    vector<pair<int,int>> v(n);
+    vector<int> arr(n);
+    for (int i=0; i<n; i++){
+        cin>>v[i].first;
+        arr[i]=v[i].first;
+        v[i].second=i;
+    }
+    sort(v.begin(), v.end());
+    int ans=0;
+    int i=n-1;
+    while(ans<v[i].first && i>=0){
+        ans = max(ans, around(arr, v[i].second, n));
+        i--;
+    }
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
