@@ -1,0 +1,158 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-06 17:13:28
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1974/D
+//Rating: 1400
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    string s;
+    cin>>s;
+    int numN=0, numS=0, numE=0, numW=0;
+    for (int i=0; i<n; i++){
+        if (s[i]=='N'){
+            numN++;
+        }
+        else if (s[i]=='W'){
+            numW++;
+        }
+        else if (s[i]=='E'){
+            numE++;
+        }
+        else{
+            numS++;
+        }
+    }
+    if ((numN+numS)%2 || (numW+numE)%2){
+        cout<<"NO\n";
+        return;
+    }
+    int r[4]={0};
+    int h[4]={0};
+    if (numN%2){
+        if(numN>numS){
+            r[0]=numS+((numN-numS)/2);
+            r[3]=numS;
+            h[0]=(numN-numS)/2;
+        }
+        else if (numS>numN){
+            r[3]=numN+((numS-numN)/2);
+            r[0]=numN;
+            h[3]=(numS-numN)/2;
+        }
+        else{
+            r[0]=1;
+            r[3]=1;
+            h[0]=numN-1;
+            h[3]=numS-1;
+        }
+    }
+    else{
+        r[0]=numN/2;
+        h[0]=numN/2;
+        r[3]=numS/2;
+        h[3]=numS/2;
+    }
+    if (numE%2){
+        if(numE>numW){
+            h[1]=numW+((numE-numW)/2);
+            h[2]=numW;
+            r[1]=(numE-numW)/2;
+        }
+        else if (numW>numE){
+            h[2]=numE+((numW-numE)/2);
+            h[1]=numE;
+            r[2]=(numW-numE)/2;
+        }
+        else{
+            h[1]=1;
+            h[2]=1;
+            r[1]=numE-1;
+            r[2]=numW-1;
+        }
+    }
+    else{
+        r[1]=numE/2;
+        h[1]=numE/2;
+        r[2]=numW/2;
+        h[2]=numW/2;
+    }
+    for (int i=0; i<4; i++){
+        if (r[i]!=0){
+            break;
+        }
+        if(i==3){
+            cout<<"NO\n";
+            return;
+        }
+    }
+    for (int i=0; i<4; i++){
+        if (h[i]!=0){
+            break;
+        }
+        if(i==3){
+            cout<<"NO\n";
+            return;
+        }
+    }
+    string ans="";
+    for (int i=0; i<n; i++){
+        if(s[i]=='N'){
+            if (r[0]){
+                ans+="R";
+                r[0]--;
+            }
+            else{
+                ans+="H";
+            }
+        }
+        else if(s[i]=='E'){
+            if (r[1]){
+                ans+="R";
+                r[1]--;
+            }
+            else{
+                ans+="H";
+            }
+        }
+        else if(s[i]=='W'){
+            if (r[2]){
+                ans+="R";
+                r[2]--;
+            }
+            else{
+                ans+="H";
+            }
+        }
+        else{
+            if (r[3]){
+                ans+="R";
+                r[3]--;
+            }
+            else{
+                ans+="H";
+            }
+        }
+    }
+    cout<<ans<<endl;
+    return;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
