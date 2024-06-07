@@ -1,0 +1,33 @@
+/**
+ *    author:  MK_20
+ *    created: 07-06-2024 22:07:36
+ **/
+//Question URL: https://codeforces.com/contest/776/problem/A
+
+#include<iostream>
+#include<vector>
+using namespace std;
+
+int main(){
+
+    pair<string, string> victim;
+    cin>>victim.first>>victim.second;
+    int n;
+    cin>>n;
+    vector<pair<string, string>> v(n);
+    for (int i=0; i<n; i++){
+        cin>>v[i].first>>v[i].second;
+    }
+    cout<<victim.first<<" "<<victim.second<<endl;
+    for (int i=0; i<n; i++){
+        if (v[i].first==victim.first){
+            victim.first=v[i].second;
+        }
+        else{
+            victim.second=v[i].second;
+        }
+        cout<<victim.first<<" "<<victim.second<<endl;
+    }
+
+    return 0;
+}
