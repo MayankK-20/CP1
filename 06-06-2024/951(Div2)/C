@@ -1,0 +1,47 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-06 21:09:00
+ **/
+//Question URL: https://codeforces.com/contest/1979/problem/C
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    int arr[n];
+    int LCM=1;
+    for (int i=0; i<n; i++){
+        cin>>arr[i];
+        LCM=std::lcm(LCM, arr[i]);
+    }
+    int ans[n];
+    int sum=0;
+    for (int i=0; i<n; i++){
+        ans[i]=LCM/arr[i];
+        sum+=ans[i];
+    }
+    if (LCM<=sum){
+        cout<<"-1\n";
+        return;
+    }
+    for (int i=0; i<n-1; i++){
+        cout<<ans[i]<<" ";
+    }
+    cout<<ans[n-1]<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
