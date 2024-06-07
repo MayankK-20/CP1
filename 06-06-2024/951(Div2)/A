@@ -1,0 +1,39 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-06 20:08:58
+ **/
+//Question URL: https://codeforces.com/contest/1979/problem/A
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+#include<climits>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    int arr[n];
+    for (int i=0; i<n; i++){
+        cin>>arr[i];
+    }
+    int ans=INT_MAX;
+    for (int i=0; i<n-1; i++){
+        int tmp = max(arr[i], arr[i+1]);
+        ans=min(ans, tmp);
+    }
+    cout<<ans-1<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
