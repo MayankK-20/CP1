@@ -1,0 +1,34 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-06 20:32:05
+ **/
+//Question URL: https://codeforces.com/contest/1979/problem/B
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int x, y;
+    cin>>x>>y;
+    int XOR=x^y;
+    int ans=1;
+    while ((ans^XOR)>XOR){
+        ans*=2;
+    }
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
