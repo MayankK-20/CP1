@@ -1,0 +1,65 @@
+/**
+ *    author:  MK_20
+ *    created: 08-06-2024 18:07:05
+ **/
+//Question URL: https://codeforces.com/contest/455/problem/A
+//Rating: 1500
+
+#include<iostream>
+#include<vector>
+#include<algorithm>
+#include<map>
+#include<set>
+#include<cstring>
+using namespace std;
+
+long long dp[100001];
+
+long long maxPoints(long long index, vector<long long>& v, map<long long, long long>& m){
+    //pruning
+    if (index>=v.size()){
+        return 0;
+    }
+    //base case
+    if (index==v.size()-1){
+        return (v[index])*m[v[index]];
+    }
+    //cache check
+    if (dp[index]!=-1){
+        return dp[index];
+    }
+    //recursion
+    if (v[index+1]>v[index]+1){
+        dp[index]=(v[index]*m[v[index]])+maxPoints(index+1, v, m);
+        return dp[index];
+    }
+    dp[index]=(v[index]*m[v[index]])+maxPoints(index+2, v, m);
+    dp[index+1]=maxPoints(index+1, v, m);
+    dp[index]=max(dp[index], dp[index+1]);
+    return dp[index];
+}
+
+int main(){
+
+    long long n;
+    cin>>n;
+    vector<long long> v(n);
+    for (long long i=0; i<n; i++){
+        cin>>v[i];
+    }
+    sort(v.begin(), v.end());
+    map<long long, long long> m;
+    vector<long long> single;
+    single.push_back(v[0]);
+    for (long long i=0; i<v.size(); i++){
+        m[v[i]]++;
+        if (v[i]!=single[single.size()-1]){
+            single.push_back(v[i]);
+        }
+    }
+    v.clear();
+    memset(dp, -1, sizeof(dp));
+    cout<<maxPoints(0, single, m)<<endl;
+
+    return 0;
+}
