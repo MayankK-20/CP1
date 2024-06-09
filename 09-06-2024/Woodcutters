@@ -1,0 +1,37 @@
+/**
+ *    author:  MK_20
+ *    created: 09-06-2024 13:04:43
+ **/
+//Question URL: https://codeforces.com/problemset/problem/545/C
+//Rating: 1500
+
+#include<iostream>
+#include<vector>
+using namespace std;
+
+int main(){
+
+    int n;
+    cin>>n;
+    vector<pair<int, int>> v(n);
+    for (int i=0; i<n; i++){
+        cin>>v[i].first>>v[i].second;
+    }
+    if (n==1 || n==2){
+        cout<<n<<endl;
+        return 0;
+    }
+    int ans=2;
+    for (int i=1; i<n-1; i++){
+        if (v[i].first-v[i].second>v[i-1].first){
+            ans++;
+        }
+        else if (v[i].first+v[i].second<v[i+1].first){
+            v[i].first+=v[i].second;
+            ans++;
+        }
+    }
+    cout<<ans<<endl;
+
+    return 0;
+}
