@@ -1,0 +1,56 @@
+/**
+ *    author:  MK_20
+ *    created: 10-06-2024 18:16:16
+ **/
+//Question URL: https://codeforces.com/contest/371/problem/B
+//Rating: 1300
+
+#include<iostream>
+#include<vector>
+using namespace std;
+
+vector<int> factor(int n){
+    vector <int > ret ;
+    ret.push_back(1);
+    for (int i = 2; i * i <= n ; i ++) {
+        while ( n % i == 0) {
+            ret . push_back ( i ) ;
+            n /= i ;
+        }
+    }
+    if ( n > 1) { ret . push_back ( n ) ; }
+    return ret ;
+}
+
+int main(){
+
+    int a,b;
+    cin>>a>>b;
+    if (a==b){
+        cout<<"0\n";
+        return 0;
+    }
+    vector<int> A=factor(a);
+    vector<int> B=factor(b);
+    if (A[A.size()-1]!=B[B.size()-1] && (A[A.size()-1]>5 || B[B.size()-1]>5)){
+        cout<<"-1\n";
+        return 0;
+    }
+    vector<int>::iterator i=A.begin();
+    vector<int>::iterator j=B.begin();
+    while (i<A.end() && j<B.end()){
+        if (*i==*j){
+            A.erase(i);
+            B.erase(j);
+        }
+        else if (*i>*j){
+            j++;
+        }
+        else{
+            i++;
+        }
+    }
+    cout<<(A.size()+B.size())<<endl;
+
+    return 0;
+}
