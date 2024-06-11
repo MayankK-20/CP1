@@ -1,0 +1,33 @@
+/**
+ *    author:  MK_20
+ *    created: 11-06-2024 15:31:42
+ **/
+//Question URL: https://codeforces.com/problemset/problem/4/C
+//Rating: 1300
+
+#include<iostream>
+#include<string>
+#include<map>
+using namespace std;
+
+int main(){
+
+    int n;
+    cin>>n;
+    map<string,int> m;
+    for (int i=0; i<n; i++){
+        string x;
+        cin>>x;
+        if (m[x]!=0){
+            cout<<(x+to_string(m[x]))<<endl;
+            m[x]++;
+        }
+        else{
+            cout<<"OK\n";
+            m[x]++;
+        }
+    }
+
+
+    return 0;
+}
