@@ -1,0 +1,29 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-13 11:50:06
+ **/
+//Question URL: https://codeforces.com/gym/105192/problem/A
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    cout<<n/12<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
