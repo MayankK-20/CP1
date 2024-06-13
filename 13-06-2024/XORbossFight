@@ -1,0 +1,41 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-13 12:12:43
+ **/
+//Question URL: https://codeforces.com/gym/105192/problem/C
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int x,y,a,b;
+    cin>>x>>y>>a>>b;
+    int d1=max(y^a, y^a^b);
+    int d2=max(d1^a, d1^a^b);
+    int ans=(x/(d1+d2));
+    ans*=2;
+    x=x%(d1+d2);
+    if (x){
+        x-=d1;
+        ans++;
+        if (x>0){
+            ans++;
+        }
+    }
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
