@@ -1,0 +1,134 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-13 15:08:18
+ **/
+//Question URL: https://codeforces.com/gym/105192/problem/E
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    string s;
+    cin>>s;
+    if (s.size()<3){
+        cout<<"NO\n";
+        return;
+    }
+    if (s[0]=='t' && s[s.size()-1]=='e'){
+        for (int i=1; i<s.size()-1; i++){
+            if (s[i]=='l'){
+                cout<<"YES\n";
+                return;
+            }
+        }
+        
+    }
+    else if (s[0]=='t' && s[s.size()-1]=='t'){
+        bool l1=false, l2=false;
+        for (int i=1; i<s.size()-2; i++){
+            if (s[i]=='l'){
+                l1=true;
+            }
+            else if (s[i]=='e' &&  s[i+1]=='e'){
+                if (l1){
+                    for (int j=i; j<s.size()-1; j++){
+                        if (s[j]=='l'){
+                            cout<<"YES\n";
+                            return;
+                        }
+                    }
+                    cout<<"NO\n";
+                    return;
+                }
+            }
+        }
+    }
+    else if (s[0]=='e' && s[s.size()-1]=='e'){
+        bool l1=false, l2=false;
+        for (int i=1; i<s.size()-2; i++){
+            if (s[i]=='l'){
+                l1=true;
+            }
+            else if (s[i]=='t' &&  s[i+1]=='t'){
+                if (l1){
+                    for (int j=i; j<s.size()-1; j++){
+                        if (s[j]=='l'){
+                            cout<<"YES\n";
+                            return;
+                        }
+                    }
+                    cout<<"NO\n";
+                    return;
+                }
+            }
+        }
+    }
+    else if (s[0]=='e' &&  s[s.size()-1]=='t'){
+        bool l=false;
+        int st=1, end=s.size()-1;
+        while (st<end){
+            if (s[st]=='l'){
+                l=true;
+                st++;
+            }
+            else if (s[end]=='l'){
+                l=true;
+                end--;
+            }
+            else if (s[st]!='t'){
+                st++;
+            }
+            else if (s[end]!='e'){
+                end--;
+            }
+            else {
+                if (l){
+                    for (int i=st+1; i<end; i++){
+                        if (s[i]=='l'){
+                            cout<<"YES\n";
+                            return;
+                        }
+                    }
+                    
+                }
+                else{
+                    bool l1=false;
+                    for (int i=st+1; i<end; i++){
+                        if (s[i]=='l'){
+                            l1=true;
+                        }
+                        else if (s[i]=='e' ||  s[i]=='t'){
+                            if (l1){
+                                for (int j=i+1; j<end; j++){
+                                    if (s[j]=='l'){
+                                        cout<<"YES\n";
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                cout<<"NO\n";
+                return;
+            }
+        }
+    }
+    cout<<"NO\n";
+    return;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
