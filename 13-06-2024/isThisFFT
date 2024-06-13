@@ -1,0 +1,26 @@
+/**
+ *    author:  MK_20
+ *    created: 13-06-2024 11:54:34
+ **/
+//Question URL: https://codeforces.com/gym/105192/problem/B
+
+#include<iostream>
+#include<vector>
+using namespace std;
+
+int main(){
+
+    int l;
+    cin>>l;
+    l++;
+    vector<int>  v(l);
+    for (int i=0; i<l; i++){
+        cin>>v[i];
+    }
+    cout<<"0\n1\n"<<l-1<<endl;
+    for (int i=0; i<l-1; i++){
+        cout<<v[i]<<" ";
+    }cout<<v[l-1]<<endl;
+
+    return 0;
+}
