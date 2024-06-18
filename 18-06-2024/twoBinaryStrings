@@ -1,0 +1,35 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-18 15:12:47
+ **/
+//Question URL: https://codeforces.com/contest/1861/problem/B
+//Rating: 1000
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    string a,b;
+    cin>>a>>b;
+    for (int i=0; i<a.size()-1; i++){
+        if (a[i]==b[i] && a[i]=='0' && a[i+1]==b[i+1] && a[i+1]=='1'){
+            cout<<"YES\n";
+            return;
+        }
+    }
+    cout<<"NO\n";
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
