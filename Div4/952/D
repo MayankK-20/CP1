@@ -1,0 +1,66 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-11 20:23:15
+ **/
+//Question URL: https://codeforces.com/contest/1985/problem/D
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int n,m;
+    cin>>n>>m;
+    vector<string> s(n);
+    vector<int> cnt(n, 0);
+    for (int i=0; i<n; i++){
+        cin>>s[i];
+        for (int j=0; j<m; j++){
+            if (s[i][j]=='#'){
+                cnt[i]++;
+            }
+        }
+    }
+    int maxidx=0;
+    for (int i=0; i<n; i++){
+        if (cnt[i]>cnt[maxidx]){
+            maxidx=i;
+        }
+    }
+    int col=0;
+    int move=cnt[maxidx]/2;
+    if (move==0){
+        for (int  i=0; i<m; i++){
+            if (s[maxidx][i]=='#'){
+                col=i;
+                break;
+            }
+        }
+        cout<<maxidx+1<<" "<<col+1<<endl;
+        return;
+    }
+    for (int i=0; i<m; i++){
+        if (s[maxidx][i]=='#'){
+            --move;
+        }
+        if (move==0){
+            col=i;
+            break;
+        }
+    }
+    cout<<maxidx+1<<" "<<col+2<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
