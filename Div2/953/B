@@ -1,0 +1,43 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-16 14:46:46
+ **/
+//Question URL: https://codeforces.com/contest/1978/problem/B
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    long long n,a,b;
+    cin>>n>>a>>b;
+    if (a>=b){
+        long long ans=(a*n);
+        cout<<ans<<endl;
+        return;
+    }
+    if (b-a>=n){
+        long long ans=(b*n);
+        ans-=((n*(n-1))/2);
+        cout<<ans<<endl;
+        return;
+    }
+    long long ans=a*(n-(b-a));
+    ans+=(b*(b-a));
+    ans-=(((b-a)*(b-a-1))/2);
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
