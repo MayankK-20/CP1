@@ -1,0 +1,39 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-18 15:51:09
+ **/
+//Question URL: https://codeforces.com/contest/1861/problem/A
+//Rating: 800
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    string s;
+    cin>>s;
+    bool flag=false;
+    for (int i=0; i<9; i++){
+        if (s[i]=='7'){
+            break;
+        }
+        if (s[i]=='1'){
+            flag=true;
+            break;
+        }
+    }
+    cout<<(flag? "17\n": "71\n");
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
