@@ -1,0 +1,48 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-11 20:23:15
+ **/
+//Question URL: https://codeforces.com/contest/1985/problem/C
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    vector<int> v(n);
+    vector<long long> pre(n);
+    cin>>v[0];
+    pre[0]=v[0];
+    for (int i=1; i<n; i++){
+        cin>>v[i];
+        pre[i]=pre[i-1]+v[i];
+    }
+    long long ans=0;
+    if (v[0]==0){
+        ans++;
+    }
+    int maxel=v[0];
+    for (int i=1; i<n; i++){
+        maxel=max(maxel, v[i]);
+        if (pre[i]%2==0 && pre[i]/2==maxel){
+            ans++;
+        }
+    }
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
