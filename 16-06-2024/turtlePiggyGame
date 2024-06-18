@@ -1,0 +1,35 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-16 14:07:55
+ **/
+//Question URL: https://codeforces.com/contest/1981/problem/A
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+void solve(){
+    int l,r;
+    cin>>l>>r;
+    int ans=0;
+    int x=2;
+    while (x<=r){
+        x*=2;
+        ans++;
+    }
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
