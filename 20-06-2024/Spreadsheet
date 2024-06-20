@@ -1,0 +1,74 @@
+/**
+ *    author:  MK_20
+ *    created: 20-06-2024 17:33:51
+ **/
+//Question URL: https://codeforces.com/contest/1/problem/B
+//Rating: 1600
+
+#include<iostream>
+#include<math.h>
+#include<map>
+using namespace std;
+
+int main(){
+
+    map<string,string> m;
+    int n;
+    cin>>n;
+    for (int i=0; i<n; i++){
+        string s;
+        cin>>s;
+        if (m[s]!=""){
+            cout<<m[s]<<endl;
+            continue;
+        }
+        string c="",n1="",n2="";
+        bool second=false;
+        for (int j=0; j<s.size(); j++){
+            if (s[j]=='C' && n1!=""){
+                second=true;
+                continue;
+            }
+            if ('A'<=s[j] && s[j]<='Z'){
+                c+=s[j];
+            }
+            else if (second){
+                n2+=s[j];
+            }
+            else{
+                n1+=s[j];
+            }
+        }
+        if (second){
+            string val="";
+            int num=stoi(n2);
+            while (num){
+                if (num%26){
+                    val=(char(num%26+'A'-1))+val;
+                }
+                else{
+                    val='Z'+val;
+                    num--;
+                }
+                num/=26;
+            }
+            val+=n1;
+            m[val]=s;
+            m[s]=val;
+            cout<<val<<endl;
+        }
+        else{
+            string val="R"+n1+"C";
+            int ans=0;
+            for (int j=c.size()-1; j>=0; j--){
+                ans+=(pow(26, c.size()-1-j)*(s[j]-'A'+1));
+            }
+            val+=to_string(ans);
+            cout<<val<<endl;
+            m[s]=val;
+            m[val]=s;
+        }
+    }
+
+    return 0;
+}
