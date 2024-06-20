@@ -1,0 +1,72 @@
+/**
+ *    author:  MK_20
+ *    created: 20-06-2024 13:15:04
+ **/
+//Question URL: https://codeforces.com/contest/230/problem/C
+//Rating: 1500
+
+#include<iostream>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+int main(){
+
+    int n,m;
+    cin>>n>>m;
+    vector<vector<int>> v(n, vector<int> (m));
+    for (int i=0; i<n; i++){
+        string s;
+        cin>>s;
+        int first=-1;
+        int last=-1;
+        for (int j=0; j<m; j++){
+            if (s[j]=='1'){
+                first=j;
+                break;
+            }
+        }
+        if (first==-1){
+            cout<<"-1\n";
+            return 0;
+        }
+        for (int j=m-1; j>=0; j--){
+            if (s[j]=='1'){
+                last=j;
+                break;
+            }
+        }
+        v[i][first]=0;
+        for (int j=first+1; j<m; j++){
+            if (s[j]=='1'){
+                v[i][j]=0;
+            }
+            else{
+                v[i][j]=v[i][j-1]+1;
+            }
+        }
+        for (int j=0; j<first; j++){
+            v[i][j]=(m-last+j);
+        }
+        for (int j=last-1; j>=0; j--){
+            if (!v[i][j]){
+                continue;
+            }
+            v[i][j]=min(v[i][j], v[i][j+1]+1);
+        }
+        for (int j=m-1; j>last; j--){
+            v[i][j]=min(v[i][j], first+m-j);
+        }
+    }
+    long long ans=9223372036854775807;
+    for (int i=0; i<m; i++){
+        long long sum=0;
+        for (int j=0; j<n; j++){
+            sum+=v[j][i];
+        }
+        ans=min(ans,sum);
+    }
+    cout<<ans<<"\n";
+
+    return 0;
+}
