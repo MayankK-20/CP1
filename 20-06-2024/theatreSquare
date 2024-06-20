@@ -1,0 +1,19 @@
+/**
+ *    author:  MK_20
+ *    created: 20-06-2024 17:23:26
+ **/
+//Question URL: https://codeforces.com/contest/1/problem/A
+//Rating: 1000
+
+#include<iostream>
+using namespace std;
+
+int main(){
+
+    int n,m,a;
+    cin>>n>>m>>a;
+    long long ans=m/a+(m%a? 1: 0);
+    cout<<ans*(n/a+(n%a?1: 0));
+
+    return 0;
+}
