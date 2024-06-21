@@ -1,0 +1,49 @@
+/**
+ *    author:  MK_20
+ *    created: 21-06-2024 13:04:50
+ **/
+//Question URL: https://codeforces.com/problemset/problem/2/A
+//Rating: 1500
+
+#include<iostream>
+#include<map>
+#include<vector>
+#include<algorithm>
+#include<climits>
+using namespace std;
+
+int main(){
+
+    map<string, int> m;
+    int n;
+    cin>>n;
+    vector<pair<string, int>> turns(n);
+    for (int i=0; i<n; i++){
+        cin>>turns[i].first>>turns[i].second;
+        m[turns[i].first]+=turns[i].second;
+    }
+    int maxim=INT_MIN;
+    vector<string> winners;
+    for (auto el: m){
+        if (maxim==el.second){
+            winners.push_back(el.first);
+        }
+        else if (maxim<el.second){
+            winners.clear();
+            winners.push_back(el.first);
+            maxim=el.second;
+        }
+    }
+    m.clear();
+    for (int i=0; i<n; i++){
+        m[turns[i].first]+=turns[i].second;
+        if (m[turns[i].first]>=maxim){
+            if (find(winners.begin(), winners.end(), turns[i].first)!=winners.end()){
+                cout<<turns[i].first<<endl;
+                return 0;
+            }
+        }
+    }
+
+    return 0;
+}
