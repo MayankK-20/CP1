@@ -1,0 +1,63 @@
+    /**
+     *    author:  MK_20
+     *    created: 2024-06-22 15:20:30
+     **/
+    //Question URL: https://codeforces.com/contest/1956/problem/C
+    //Rating: 1600
+
+    #include<iostream>
+    #include<numeric>
+    #include<vector>
+    #include<algorithm>
+    using namespace std;
+
+    void solve(){
+        int n;
+        cin>>n;
+        if (n<3){
+            long long s=0;
+            for (int i=1; i<n; i++){
+                s+=i;
+            }
+            s+=n;
+            s*=(n-1);
+            s+=(n*n);
+            cout<<s<<" "<<2*n-1<<endl;
+            for (int i=0; i<n; i++){
+                cout<<"1 "<<i+1<<" ";
+                for (int j=1; j<n; j++){
+                    cout<<j<<" ";
+                }cout<<n<<endl;
+            }
+            for (int i=1; i<n; i++){
+                cout<<"2 "<<i<<" ";
+                for (int j=1; j<n; j++){
+                    cout<<j<<" ";
+                }cout<<n<<endl;
+            }
+            return;
+        }
+        long long sum=0;
+        string p=" ";
+        for (int i=1; i<=n; i++){
+            sum+=(i*(2*i-1));
+            p+=(to_string(i)+" ");
+        }
+        cout<<sum<<" "<<2*n<<endl;
+        for (int i=n; i>0; i--){
+            cout<<"1 "<<i<<p<<"\n";
+            cout<<"2 "<<i<<p<<"\n";
+        }
+
+    }
+
+    int main(){
+
+        int t;
+        cin>>t;
+        while(t--){
+            solve();
+        }
+
+        return 0;
+    }
