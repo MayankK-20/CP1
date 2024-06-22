@@ -1,0 +1,77 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-22 11:54:34
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1985/F
+//Rating: 1500
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+#include<map>
+#include<climits>
+using namespace std;
+
+void solve(){
+    int h,n;
+    cin>>h>>n;
+    map<int, int> m;
+    int minim=INT_MAX;
+    {
+        vector<int> v(n);
+        for (int i=0; i<n ;i++){
+            cin>>v[i];
+            if (h>0){
+              h-=v[i];  
+            }   
+        }
+        for (int i=0; i<n; i++){
+            int cooldown;
+            cin>>cooldown;
+            m[cooldown]+=v[i];
+            minim=min(minim, cooldown);
+        }
+    }
+    if (h<=0){
+        cout<<"1\n";
+        return;
+    }
+    // unsigned long long st=1, end=((((h/m[minim])+(h%m[minim]? 1:0))+1)*minim);
+    unsigned long long st=1;
+    unsigned long long end=18446744073709551614ULL;
+    // cout<<h/m[minim]<<" "<<h%m[minim]<<" "<<minim<<" "<<end;
+    unsigned long long ans=end;
+    while (st<=end){
+        unsigned long long mid=(end-st)/2+st;
+        // cout<<"Mid: "<<mid<<"\n";
+        unsigned long long attack=0;
+        bool flag=true;
+        for (auto el: m){ 
+            attack+=((mid-1)/el.first)*el.second;
+            // cout<<el.first<<" "<<el.second<<" "<<attack<<"\n";
+            if (attack>=h){
+                ans=mid;
+                end=mid-1;
+                flag=false;
+                break;
+            }
+        }
+        // cout<<"st: "<<st<<" end: "<<end<<" attack: "<<attack<<"\n";
+        if (flag){
+            st=mid+1;
+        }
+    }
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
