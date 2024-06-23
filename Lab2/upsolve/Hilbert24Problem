@@ -1,0 +1,50 @@
+/**
+ *    author:  MK_20
+ *    created: 23-06-2024 18:31:43
+ **/
+
+#include<iostream>
+using namespace std;
+
+int main(){
+
+    int n,m,k;
+    cin>>n>>m>>k;
+    int left=k-1, right=n-k;
+    if (right<left){
+        int tmp=left;
+        left=right;
+        right=tmp;
+    }
+    m-=n;
+    int ans=1;
+    if (m==0 || m==1){
+        cout<<ans+m<<endl;
+        return 0;
+    }
+    m--;
+    ans++;
+    for (int i=1; i<=left; i++){
+        if (m>=((2*i)+1)){
+            ans++;
+            m-=((2*i)+1);
+        }
+        else{
+            cout<<ans<<endl;
+            return 0;
+        }
+    }
+    for (int i=left+1; i<=right; i++){
+        if (m>=(left+1+i)){
+            ans++;
+            m-=(left+1+i);
+        }
+        else{
+            cout<<ans<<endl;
+            return 0;
+        }
+    }
+    cout<<ans+(m/n)<<endl;
+
+    return 0;
+}
