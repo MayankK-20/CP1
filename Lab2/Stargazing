@@ -1,0 +1,37 @@
+/**
+ *    author:  MK_20
+ *    created: 22-06-2024 20:10:44
+ **/
+
+#include<iostream>
+#include<vector>
+#include<algorithm>
+using namespace std;
+
+int main(){
+
+    int n;
+    cin>>n;
+    vector<pair<int,bool>> v;
+    for (int i=0; i<n; i++){
+        int st,end;
+        cin>>st>>end;
+        v.push_back({st,false});
+        v.push_back({end,true});
+    }
+    sort(v.begin(), v.end());
+    int ans=0;
+    int current=0;
+    for (int i=0; i<v.size(); i++){
+        if (v[i].second){
+            current--;
+        }
+        else{
+            current++;
+        }
+        ans=max(current, ans);
+    }
+    cout<<ans<<endl;
+
+    return 0;
+}
