@@ -1,0 +1,48 @@
+/**
+ *    author:  MK_20
+ *    created: 22-06-2024 20:56:14
+ **/
+
+#include<iostream>
+#include<vector>
+#include<algorithm>
+#include<numeric>
+using namespace std;
+
+int main(){
+
+    int n,k;
+    cin>>n>>k;
+    vector<int> v(n);
+    for (int i=0; i<n; i++){
+        cin>>v[i];
+    }
+    sort(v.begin(), v.end());
+    double st=0, end=v[n-1];
+    double ans=0;
+    while (end-st>0.0000001){
+        double mid=(end-st)/2+st;
+        long long done=0;
+        bool flag=true;
+        for (int i=0; i<n; i++){
+            done+=(v[i]/mid);
+            if (done>k){
+                st=mid;
+                flag=false;
+                break;
+            }
+        }
+        if (flag){
+            if (done==k){
+                ans=mid;
+                st=mid;
+                continue;
+            }
+            end=mid;    
+        }
+    }
+    cout.precision(6);
+    cout<<fixed<<ans<<endl;
+    
+    return 0;
+}
