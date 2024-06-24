@@ -1,0 +1,66 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-23 21:22:37
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1986/D
+//Rating:
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+#include<string>
+#include<climits>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    vector<int> digits(n);
+    for (int i=0; i<n; i++){
+        char el;
+        cin>>el;
+        digits[i]=el-'0';
+    }
+    if (n==2){
+        cout<<(digits[0]*10)+digits[1]<<endl;
+        return;
+    }
+    long long maxim=INT_MAX;
+    for (int i=0; i<n-1; i++){
+        long long ans=(digits[i]*10)+digits[i+1];
+        if (ans==1){
+            ans=0;
+        }
+        for (int j=0; j<n; j++){
+            if (j==i || j==i+1){
+                continue;
+            }
+            if (digits[j]!=1){
+                ans+=digits[j];
+            }
+            else{
+                ans=max(ans, 1ll);
+            }
+            if (digits[j]==0){
+                cout<<0<<endl;
+                return;
+            }
+        }
+        maxim=min(ans, maxim);
+    }
+    cout<<maxim<<endl;
+    return;
+
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
