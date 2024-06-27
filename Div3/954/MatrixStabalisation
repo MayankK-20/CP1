@@ -1,0 +1,55 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-23 20:37:29
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1986/B
+//Rating: 1000
+
+#include<iostream>
+#include<numeric>
+#include<vector>
+#include<algorithm>
+#include<climits>
+using namespace std;
+
+void solve(){
+    int n,m;
+    cin>>n>>m;
+    vector<vector<int>> matrix(n, vector<int>(m));
+    for (int i=0; i<n; i++){
+        for (int j=0; j<m; j++){
+            cin>>matrix[i][j];
+        }
+    }
+    if (n==1 && m==1){
+        cout<<matrix[0][0]<<endl;
+        return;
+    }
+    for (int i=0; i<n; i++){
+        for (int j=0; j<m; j++){
+            int up=(i-1<0? INT_MIN: matrix[i-1][j]);
+            int down=(i+1>=n? INT_MIN: matrix[i+1][j]);
+            int left=(j-1<0? INT_MIN: matrix[i][j-1]);
+            int right=(j+1>=m? INT_MIN: matrix[i][j+1]);
+            if (matrix[i][j]>up && matrix[i][j]>down && matrix[i][j]>left && matrix[i][j]>right){
+                matrix[i][j]=max(up, max(down, max(left, right)));
+            }
+        }
+    }
+    for (int i=0; i<n; i++){
+        for (int j=0; j<m; j++){
+            cout<<matrix[i][j]<<" ";
+        }cout<<endl;
+    }
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
