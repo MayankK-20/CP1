@@ -1,0 +1,41 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-28 15:54:09
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1975/A
+//Rating: 800
+
+#include<bits/stdc++.h>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    vector<int> v(n);
+    for (int i=0; i<n; i++){
+        cin>>v[i];
+    }
+    int times=0;
+    int idx=-1;
+    for (int i=1; i<n; i++){
+        if (v[i]<v[i-1]){
+            times++;
+        }
+    }
+    if (times==0 || (times==1 && v[n-1]<=v[0])){
+        cout<<"YES\n";
+        return;
+    }
+    cout<<"NO\n";
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
