@@ -1,0 +1,69 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-28 14:14:42
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1978/C
+//Rating: 1300
+
+#include<bits/stdc++.h>
+using namespace std;
+
+void swapd(vector<int>& v, int& st, int& end){
+    int tmp=v[end];
+    v[end]=v[st];
+    v[st]=tmp;
+    st++;
+    end--;
+}
+
+void solve(){
+    long long n,k;
+    cin>>n>>k;
+    if (k%2){
+        cout<<"NO\n";
+        return;
+    }
+    vector<int> v(n);
+    for (int i=0; i<n; i++){
+        v[i]=i+1;
+    }
+    int st=0,end=n-1;
+    bool flag=false;
+    while (st<end){
+        if (k==0){
+            flag=true;
+            break;
+        }
+        if (k-((v[end]-v[st])*2)<0){
+            end=st+k/2;
+            swapd(v,st,end);
+            flag=true;
+            break;
+        }
+        k-=((v[end]-v[st])*2);
+        swapd(v, st, end);
+    }
+    if (k==0){
+        flag=true;
+    }
+    if (flag){
+        cout<<"YES\n";
+        for (int i=0; i<n; i++){
+            cout<<v[i]<<" ";
+        }cout<<endl;
+    }
+    else{
+        cout<<"NO\n";
+    }
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
