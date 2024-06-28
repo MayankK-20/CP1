@@ -1,0 +1,51 @@
+/**
+ *    author:  MK_20
+ *    created: 2024-06-28 14:57:11
+ **/
+//Question URL: https://codeforces.com/problemset/problem/1976/B
+//Rating: 1100
+
+#include<bits/stdc++.h>
+using namespace std;
+
+void solve(){
+    int n;
+    cin>>n;
+    vector<int> a(n);
+    vector<int> b(n+1);
+    for (int i=0; i<n; i++){
+        cin>>a[i];
+    }
+    for (int i=0; i<n+1; i++){
+        cin>>b[i];
+    }
+    long long closest=INT_MAX;
+    long long ans=0;
+    for (int i=0; i<n; i++){
+        if ((b[n]<=a[i] && b[n]>=b[i]) || (b[n]>=a[i] && b[n]<=b[i])){
+            closest=b[n];
+        }
+        else{
+            if (abs(b[n]-a[i])<abs(b[n]-closest)){
+                closest=a[i];
+            }
+            if (abs(b[n]-b[i])<abs(b[n]-closest)){
+                closest=b[i];
+            }
+        }
+        ans+=abs(b[i]-a[i]);
+    }
+    ans+=1+abs(b[n]-closest);
+    cout<<ans<<endl;
+}
+
+int main(){
+
+    int t;
+    cin>>t;
+    while(t--){
+        solve();
+    }
+
+    return 0;
+}
