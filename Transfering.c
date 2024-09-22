@@ -154,3 +154,87 @@ int to_execute(char* whole_command){
         wait(NULL);
     }
 }
+
+
+int to_execute(char* whole_command) {
+    char* command = strtok(whole_command, "|");
+    int fd[2];
+    int input = 0;  // Initial input is stdin (0)
+    int pid;
+
+    while (command != NULL) {
+        // Parse command arguments
+        char* arguments[500];
+        char* token = strtok(command, " \t\n");
+        int i = 0;
+        while (token != NULL) {
+            arguments[i++] = token;
+            token = strtok(NULL, " \t\n");
+        }
+        arguments[i] = NULL;
+
+        // Move to the next command in the pipeline
+        command = strtok(NULL, "|");
+
+        // If there is another command, create a pipe
+        if (command != NULL) {
+            if (pipe(fd) == -1) {
+                perror("Pipe creation failed");
+                exit(1);
+            }
+        }
+
+        // Fork a child process to handle the current command
+        pid = fork();
+        if (pid < 0) {
+            perror("Fork failed");
+            exit(1);
+        }
+
+        if (pid == 0) {  // Child process
+            // Redirect input if needed
+            if (input != 0) {  // If it's not the first command
+                if (dup2(input, STDIN_FILENO) == -1) {
+                    perror("dup2 failed for the input");
+                    exit(1);
+                }
+                close(input);  // Close the old input after duplicating
+            }
+
+            // Redirect output if there is another command (not the last command)
+            if (command != NULL) {
+                if (dup2(fd[1], STDOUT_FILENO) == -1) {
+                    perror("dup2 failed for the output");
+                    exit(1);
+                }
+                close(fd[1]);  // Close the write end after duplicating
+            }
+
+            close(fd[0]);  // Close the unused read end in the child
+
+            // Execute the command
+            if (execvp(arguments[0], arguments) == -1) {
+                perror("Command execution failed");
+                exit(1);
+            }
+        } else {  // Parent process
+            // Close the previous pipe's read end
+            if (input != 0) {
+                close(input);
+            }
+
+            // If there is a next command, set input to the current pipe's read end
+            if (command != NULL) {
+                close(fd[1]);  // Close the write end in the parent
+                input = fd[0]; // Keep the read end for the next command
+            }
+        }
+    }
+
+    // Parent process waits for all child processes
+    for (int i = 0; i < 500; i++) {
+        wait(NULL);
+    }
+
+    return 1;
+}
