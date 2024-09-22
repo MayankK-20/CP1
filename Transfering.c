@@ -89,11 +89,10 @@ void to_execute(char* whole_command) {
 }
 
 
-//Separating the string and launching the command
-int to_execute(char* whole_command){
-    char* command=strtok(whole_command,"|");
+int to_execute(char* whole_command) {
+    char* command = strtok(whole_command, "|");
     char* commands[500];
-    int num_command=0;
+    int num_commands = 0;
 
     while (command != NULL) {
         commands[num_commands++] = command;
@@ -101,64 +100,66 @@ int to_execute(char* whole_command){
     }
 
     int fd[2];
-    int input=0;    //Initial input is stdin(0);
+    int input = 0;    // Initial input is stdin (0)
     int pid;
 
-    for (int j=0; j<num_commands; j++){
+    for (int j = 0; j < num_commands; j++) {
         char* arguments[500];
-        char* token=strtok(commands[i], " \t\n");
-        int i=0;
-        while (token!=NULL){
-            arguments[i++]=token;
-            token=strtok(NULL, " \t\n");
+        char* token = strtok(commands[j], " \t\n");
+        int i = 0;
+        while (token != NULL) {
+            arguments[i++] = token;
+            token = strtok(NULL, " \t\n");
         }
-        arguments[i]=NULL;
+        arguments[i] = NULL;  // Null-terminate the arguments array
 
-        if (j != num_commands-1){                       //Not the last command
+        if (j != num_commands - 1) {  // Not the last command
             if (pipe(fd) == -1) {
                 perror("Pipe failed");
                 exit(1);
             }
         }
 
-        pid=fork();
-        if (pid<0){
-            perror("Fork Failed")
+        pid = fork();
+        if (pid < 0) {
+            perror("Fork Failed");
             return 1;
         }
-        if (pid==0){
-            if (input!=0){                              //Previously command has been executed we want to read output of that command.
-                if (dup2(input,STDIN_FILENO)==-1){
+        if (pid == 0) {  // Child process
+            if (input != 0) {  // Previous command has been executed
+                if (dup2(input, STDIN_FILENO) == -1) {
                     perror("dup2 failed for input redirection");
-                    return 1;
+                    exit(1);
                 }
                 close(input);
             }
-            
-            if (i != num_commands-1) {                  //If not last command write here.
-                if (dup2(fd[1], STDOUT_FILENO)==-1) {
+
+            if (j != num_commands - 1) {  // If not the last command
+                if (dup2(fd[1], STDOUT_FILENO) == -1) {
                     perror("dup2 failed for output");
-                    return 1;
+                    exit(1);
                 }
-                close(fd[1]);                           //Write through reference in STDOUT
+                close(fd[1]);  // Write end
             }
 
-            close(fd[0]);                               //Read end is not used.
+            close(fd[0]);  // Read end not used
 
-            if (execvp(arguments[0], arguments) == -1) {                //Executing the current command.
+            if (execvp(arguments[0], arguments) == -1) {
                 perror("Command execution failed");
                 exit(1);
             }
         }
 
-        wait(NULL);
+        wait(NULL);  // Wait for child process to finish
 
-        if (input!=0){
-            close(input);                       //Closing previous pipe read.
+        if (input != 0) {
+            close(input);  // Close previous pipe read
         }
-        if (i != num_commands-1){
-            close(fd[1]);
-            input=fd[0];
+        if (j != num_commands - 1) {
+            close(fd[1]);  // Close the write end of the current pipe
+            input = fd[0];  // Set input for the next command
         }
-        return 1;
     }
+
+    return 1;  // Return after processing all commands
+}
