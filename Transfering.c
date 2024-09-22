@@ -95,6 +95,7 @@ int to_execute(char* whole_command){
 
     int fd[2];
     int input=0;    //Initial input is stdin(0);
+    int pid;
 
     while (command!=NULL){
         char* arguments[500];
@@ -105,32 +106,49 @@ int to_execute(char* whole_command){
             token=strtok(NULL, " \t\n");
         }
         arguments[i]=NULL;
-        if (dup2(input,STDIN_FILENO)==-1){
-            perror("dup2 failed");
+        command=strtok(NULL,"|");                   //Next command to be executed.
+        if (command!=NULL){
+            if (pipe(fd)==-1){
+            perror("Pipe creation failed");
+            exit(1);
+            }
+        }
+        pid=fork();
+        if (pid<0){
+            perror("Fork failed");
             exit(1);
         }
-        close(input);
+        if (pid==0){
+            if (input!=0){                          //Stops unnecessary redirects as in first pipe it is already pointing to stdin
+                if (dup2(input,STDIN_FILENO)==-1){
+                perror("dup2 failed for the input");
+                exit(1);
+            }
+            close(input);
+        }
+        
+        if (command!=NULL){                         //Redirects output when not last command
+            if (dup2(fd[1],STDOUT_FILENO)==-1){
+                perror("dup2 failed for the output");
+                exit(1);
+            }
+            close(fd[1]);
+        }
 
-        if (dup2(fd[1],STDOUT_FILENO)==-1){
-            perror("dup2 failed");
-            exit(1);
-        }
-        close(fd[1]);
         close(fd[0]);
         if (execvp(arguments[0], arguments) == -1) {
             perror("Command execution failed");
             exit(1);
         }
-        command=strtok(NULL,"|");
+
+        if (input!= 0) {
+            close(input);  // Close previous pipe's read end
+        }
+    
+        close(fd[1]);  // Close the write end of the pipe in the parent
+        input = fd[0];  // Set input_fd to the read end of the current pipe for the next command
     }
 
-    if (input_fd != 0) {
-        close(input_fd);  // Close previous pipe's read end
-    }
-    if (i != num_commands - 1) {
-        close(fd[1]);  // Close the write end of the pipe in the parent
-        input_fd = fd[0];  // Set input_fd to the read end of the current pipe for the next command
-    }
     
     for (int i = 0; i < num_commands; i++) {
         wait(NULL);
