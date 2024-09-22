@@ -87,3 +87,52 @@ void to_execute(char* whole_command) {
         wait(NULL);
     }
 }
+
+
+int to_execute(char* whole_command){
+    char* command=strtok(whole_command,"|");
+    int num_command=1;
+
+    int fd[2];
+    int input=0;    //Initial input is stdin(0);
+
+    while (command!=NULL){
+        char* arguments[500];
+        char* token=strtok(command, " \t\n");
+        int i=0;
+        while (token!=NULL){
+            arguments[i++]=token;
+            token=strtok(NULL, " \t\n");
+        }
+        arguments[i]=NULL;
+        if (dup2(input,STDIN_FILENO)==-1){
+            perror("dup2 failed");
+            exit(1);
+        }
+        close(input);
+
+        if (dup2(fd[1],STDOUT_FILENO)==-1){
+            perror("dup2 failed");
+            exit(1);
+        }
+        close(fd[1]);
+        close(fd[0]);
+        if (execvp(arguments[0], arguments) == -1) {
+            perror("Command execution failed");
+            exit(1);
+        }
+        command=strtok(NULL,"|");
+    }
+
+    if (input_fd != 0) {
+        close(input_fd);  // Close previous pipe's read end
+    }
+    if (i != num_commands - 1) {
+        close(fd[1]);  // Close the write end of the pipe in the parent
+        input_fd = fd[0];  // Set input_fd to the read end of the current pipe for the next command
+    }
+    
+    for (int i = 0; i < num_commands; i++) {
+        wait(NULL);
+    }
+}
