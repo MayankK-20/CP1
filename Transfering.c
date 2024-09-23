@@ -112,7 +112,7 @@ char* read_user_input(){
 
 void show_history(){
     for (int i=0; i<history_size; i++){
-        printf("%s\n",history[i]);
+        printf("%s",history[i]);
     }
 }
 
