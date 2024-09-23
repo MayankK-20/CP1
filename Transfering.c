@@ -145,8 +145,10 @@ void shell_loop(){
         free(command);
         continue;
     }
+    char* com=strdup(command);
     status = launch(command);
-    history_add(command, start_time);
+    history_add(com, start_time);
+    free(com);
     free(command);
   } while (status);
 }
