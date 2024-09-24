@@ -161,7 +161,17 @@ int main(){
 
 
 
-
+int to_execute(char* command){
+    char* arguments[500];
+    char* token=strtok(command, " \t\n");
+    int i=0;
+    while (token!=NULL){
+        arguments[i++]=token;
+        token=strtok(NULL, " \t\n");
+    }
+    arguments[i]=NULL;
+    return launch(arguments);
+}
 
 int launch(char** args){
     int pid=fork();
@@ -176,7 +186,6 @@ int launch(char** args){
         }
     }
     else{
-        wait(NULL);
         waitpid(pid,NULL,0);
     }
     return 1;
