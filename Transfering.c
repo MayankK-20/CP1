@@ -157,3 +157,27 @@ int main(){
     shell_loop();
     return 0;
 }
+
+
+
+
+
+
+int launch(char** args){
+    int pid=fork();
+    if (pid<0){
+        perror("Fork Failed");
+    }
+    else if (pid==0){           //child
+        if (execvp(args[0], args)==-1){
+            //execvp searches for executable replaces it with the child process if succesfull it will never return else return -1;
+            perror("Command could not be executed");
+            exit(1);
+        }
+    }
+    else{
+        wait(NULL);
+        waitpid(pid,NULL,0);
+    }
+    return 1;
+}
