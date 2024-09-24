@@ -6,8 +6,10 @@
 #include<time.h>
 
 
+
 char* history[1000];
 int history_size=0;
+struct timespec st_time[1000];
 struct timespec duration[1000];
 struct timespec start_time;
 int pid_record[1000];
@@ -128,6 +130,7 @@ void history_add(char* command, struct timespec time){
         duration[i].tv_sec--;
         duration[i].tv_nsec+=1000000000;
     }
+    st_time[i]=start_time;
     pid_record[i]=pd;
 }
 
@@ -153,40 +156,29 @@ void shell_loop(){
   } while (status);
 }
 
+
+
+static void my_handler(int signum) {
+    if (signum == SIGINT) {
+        printf("\n\nDisplaying command history:\n\n");
+        for (int i = 0; i < history_size; i++) {
+            printf("Command: %s", history[i]); 
+            printf("PID: %d\n", pid_record[i]);
+            printf("Duration: %ld seconds, %ld nanoseconds\n", 
+                    duration[i].tv_sec, duration[i].tv_nsec);
+            printf("Start Time: %ld seconds, %ld nanoseconds since epoch\n", st_time[i].tv_sec, st_time[i].tv_nsec);
+            printf("\n");
+        }
+        exit(0);
+    }
+}
+
+
 int main(){
+    struct sigaction sig;
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = my_handler;
+    sigaction(SIGINT, &sig, NULL);
     shell_loop();
     return 0;
-}
-
-
-
-
-int to_execute(char* command){
-    char* arguments[500];
-    char* token=strtok(command, " \t\n");
-    int i=0;
-    while (token!=NULL){
-        arguments[i++]=token;
-        token=strtok(NULL, " \t\n");
-    }
-    arguments[i]=NULL;
-    return launch(arguments);
-}
-
-int launch(char** args){
-    int pid=fork();
-    if (pid<0){
-        perror("Fork Failed");
-    }
-    else if (pid==0){           //child
-        if (execvp(args[0], args)==-1){
-            //execvp searches for executable replaces it with the child process if succesfull it will never return else return -1;
-            perror("Command could not be executed");
-            exit(1);
-        }
-    }
-    else{
-        waitpid(pid,NULL,0);
-    }
-    return 1;
 }
