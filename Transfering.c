@@ -15,6 +15,27 @@ struct timespec start_time;
 int pid_record[1000];
 int pd;
 
+int launch2(char** args, int bg){
+    int pid=fork();
+    if (pid<0){
+        perror("Fork Failed");
+    }
+    else if (pid==0){
+        if (execvp(args[0], args)==-1){
+            //execvp searches for executable replaces it with the child process if succesfull it will never return else return -1;
+            perror("Command could not be executed");
+            return 1;
+        }
+    }
+    else {
+        pd=pid;
+        if (!bg){
+            waitpid(pid,NULL,0);
+        }
+    }
+    return 1;
+}
+
 //Separating the string and launching the command
 int launch(char* whole_command) {
     char* command = strtok(whole_command, "|");
@@ -30,7 +51,7 @@ int launch(char* whole_command) {
     int input = 0;                                                              // Initial input is stdin (0)
     int pid;
 
-    for (int j = 0; j < num_commands; j++) {
+    for (int j=0; j<num_commands; j++) {
 
         char* arguments[500];
         char* token = strtok(commands[j], " \t\n");
@@ -47,6 +68,11 @@ int launch(char* whole_command) {
             arguments[--i]=NULL;                                                //strcmp returns 0 when same, <0 when first string lexographically smaller, >0 when second string lexographically smaller
             bg=1;
         }
+
+        if (j==0 && 1==num_commands){
+            return launch2(arguments, bg);
+        }
+
         if (j != num_commands - 1) {                                            // Not the last command
             if (pipe(fd) == -1) {
                 perror("Pipe failed");
@@ -148,6 +174,10 @@ void shell_loop(){
         free(command);
         continue;
     }
+    if (strcmp(command, "exit\n")==0){
+        raise(SIGINT);
+        exit(0);
+    }
     char* com=strdup(command);
     status = launch(command);
     history_add(com, start_time);
@@ -161,7 +191,7 @@ void shell_loop(){
 static void my_handler(int signum) {
     if (signum == SIGINT) {
         printf("\n\nDisplaying command history:\n\n");
-        for (int i = 0; i < history_size; i++) {
+        for (int i=0; i<history_size; i++) {
             printf("Command: %s", history[i]); 
             printf("PID: %d\n", pid_record[i]);
             printf("Duration: %ld seconds, %ld nanoseconds\n", 
