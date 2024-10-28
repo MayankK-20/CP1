@@ -44,18 +44,14 @@ shm_t* shared_mem;
 
 int launch2(char** args, int bg){
     if (strcmp(args[0],"submit")==0){
-        Job_PCB j;
-        j.job_name = strdup(args[1]);
-        if (j.job_name == NULL){
+        shared_mem->new_job.job_name = strdup(args[1]);
+        if (shared_mem->new_job.job_name == NULL){
             perror("strdup failed");
             return 1;
         }
         if (args[2]!=NULL){
-            j.priority = args[2];
+            shared_mem->new_job.priority = atoi(args[2]);
         }
-        j.wait_time.tv_sec=0;
-        j.wait_time.tv_nsec=0;
-        shared_mem->new_job=j;
         kill(scheduler_pid, SIGUSR2);
         return 1;
     }
@@ -280,7 +276,11 @@ static void my_handler(int signum) {                        //******************
         exit(0);
     }
     if (signum==SIGUSR2){
-        Job_PCB j = shared_mem->new_job;
+        Job_PCB j;
+        j.job_name=strdup(shared_mem->new_job.job_name);
+        j.wait_time.tv_sec=0;
+        j.wait_time.tv_nsec=0;
+        j.priority=shared_mem->new_job.priority;
         int pid=fork();
         if (pid<0){
             perror("Fork Failed");
@@ -332,6 +332,7 @@ int main(int argc, char* argv[]){
     memset(&sig, 0, sizeof(sig));
     sig.sa_handler = my_handler;
     sigaction(SIGINT, &sig, NULL);
+    sigaction(SIGUSR2, &sig, NULL);
 //o_creat = create if not there. o_rdwr = read and write, 0666 = wide access for owner, group and others. read and write permission mainly.
     shm_fd = shm_open("/shm_struct", O_CREAT | O_RDWR, 0666);       //file descriptor.
     if (shm_fd == -1) {
