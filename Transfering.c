@@ -275,6 +275,9 @@ static void my_handler(int signum) {                        //******************
         close(shm_fd);
         exit(0);
     }
+}
+
+static void sigusr2_handler(int signum){
     if (signum==SIGUSR2){
         Job_PCB j;
         j.job_name=strdup(shared_mem->new_job.job_name);
@@ -286,7 +289,7 @@ static void my_handler(int signum) {                        //******************
             perror("Fork Failed");
         }
         else if (pid==0){
-            char** args={j.job_name, NULL};
+            char* args[]={j.job_name, NULL};
             if (execvp(args[0], args)==-1){
                 perror("Command could not be executed");
             }
@@ -332,7 +335,6 @@ int main(int argc, char* argv[]){
     memset(&sig, 0, sizeof(sig));
     sig.sa_handler = my_handler;
     sigaction(SIGINT, &sig, NULL);
-    sigaction(SIGUSR2, &sig, NULL);
 //o_creat = create if not there. o_rdwr = read and write, 0666 = wide access for owner, group and others. read and write permission mainly.
     shm_fd = shm_open("/shm_struct", O_CREAT | O_RDWR, 0666);       //file descriptor.
     if (shm_fd == -1) {
@@ -364,6 +366,10 @@ int main(int argc, char* argv[]){
         exit(1);
     }
     else if (scheduler_pid == 0){
+        struct sigaction sh;
+        memset(&sh, 0, sizeof(sh));
+        sh.sa_handler = sigusr2_handler;
+        sigaction(SIGUSR2, &sh, NULL);
         while (1){
             unsigned int sleep_time=TSLICE;
             while (sleep_time>0){
