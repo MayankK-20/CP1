@@ -11,6 +11,8 @@
 
 //***************************give error handling for all sys calls. */
 
+typedef struct timespec timespec;
+
 typedef struct Job_PCB{
     pid_t pid;
     char* job_name;
@@ -18,6 +20,7 @@ typedef struct Job_PCB{
     timespec start_time;
     timespec end_time;
     timespec prev_time;
+    int priority;
     //completion time = end_time - start_time
 } Job_PCB;
 
@@ -28,6 +31,7 @@ typedef struct shm_t{
     int running_count;
     Job_PCB terminated[1000];
     int terminated_count;
+    Job_PCB new_job;
 } shm_t;
 
 
@@ -39,51 +43,34 @@ int shm_fd;
 shm_t* shared_mem;
 
 int launch2(char** args, int bg){
+    if (strcmp(args[0],"submit")==0){
+        Job_PCB j;
+        j.job_name = strdup(args[1]);
+        if (j.job_name == NULL){
+            perror("strdup failed");
+            return 1;
+        }
+        if (args[2]!=NULL){
+            j.priority = args[2];
+        }
+        j.wait_time.tv_sec=0;
+        j.wait_time.tv_nsec=0;
+        shared_mem->new_job=j;
+        kill(scheduler_pid, SIGUSR2);
+        return 1;
+    }
     int pid=fork();
     if (pid<0){
         perror("Fork Failed");
     }
     else if (pid==0){
-        if (strcmp(args[0],"submit")==0){
-            char* job = args[1];
-            //priority check
-            args[0]=args[1];
-            args[1]=NULL;
-            args[2]=NULL;
-            if (execvp(args[0], args)==-1){
-                perror("Command could not be executed");
-                return 1;
-            }
-            //process for the job.
-        }
-        else if (execvp(args[0], args)==-1){
+        if (execvp(args[0], args)==-1){
             //execvp searches for executable replaces it with the child process if succesfull it will never return else return -1;
             perror("Command could not be executed");
             return 1;
         }
     }
     else {
-        if (strcmp(args[0],"submit")==0){
-            Job_PCB j;
-            j.job_name=strdup(name);
-            if (j.job_name == NULL){
-                perror("strdup failed");
-                return 1;
-            }
-            j.pid=pid;
-            j.wait_time.tv_sec=0;
-            j.wait_time.tv_nsec=0;
-            clock_gettime(CLOCK_MONOTONIC,&j.start_time);
-            clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
-            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
-            if (index>=1000){
-                perror("Ready Queue Full");
-                atomic_fetch_sub(&shared_mem->ready_count,1);
-                free(j.job_name);
-                return 1;
-            }
-            shared_mem->ready[index]=j;
-        }
         if (!bg){
             waitpid(pid,NULL,0);
         }
@@ -211,10 +198,11 @@ void context_switch(){
         int status;
         int result=waitpid(j.pid, &status, WNOHANG);
         if (result==-1){
+            printf("%d", j.pid);
             perror("Error checking job status");
             continue;
         }
-        struct timespec cur_time;
+        timespec cur_time;
         clock_gettime(CLOCK_MONOTONIC, &cur_time);
         j.wait_time.tv_sec+=(cur_time.tv_sec-j.prev_time.tv_sec);
         j.wait_time.tv_nsec+=(cur_time.tv_nsec-j.prev_time.tv_nsec);
@@ -223,7 +211,6 @@ void context_switch(){
             j.wait_time.tv_nsec+=1000000000;
         }
         if (result==0){             //Job not finished.
-            kill(j.pid, SIGUSR1);   //For starting execution if not started.
             kill(j.pid, SIGSTOP);
             //wait time.
             int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
@@ -231,7 +218,7 @@ void context_switch(){
                 perror("Ready Queue Full");
                 atomic_fetch_sub(&shared_mem->ready_count,1);
                 free(j.job_name);
-                return 1;
+                continue;
             }
             shared_mem->ready[index]=j;
         }
@@ -249,6 +236,7 @@ void context_switch(){
     int to_run=(NCPU<shared_mem->ready_count? NCPU: shared_mem->ready_count);
     for (int i=0; i<to_run; i++){
         Job_PCB j = shared_mem->ready[i];
+        kill(j.pid, SIGUSR1);   //For starting execution if not started.
         kill(j.pid, SIGCONT); // Continue the job
         shared_mem->running[shared_mem->running_count++] = j;
     }
@@ -280,7 +268,7 @@ static void my_handler(int signum) {                        //******************
                 completion.tv_sec--;
                 completion.tv_nsec+=1000000000;
             }
-            printf("Completion time: %ld seconds, %ld nanoseconds\n",);
+            printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
             printf("\n");
             free(j.job_name);
         }
@@ -290,6 +278,30 @@ static void my_handler(int signum) {                        //******************
         shm_unlink("/shm_struct");
         close(shm_fd);
         exit(0);
+    }
+    if (signum==SIGUSR2){
+        Job_PCB j = shared_mem->new_job;
+        int pid=fork();
+        if (pid<0){
+            perror("Fork Failed");
+        }
+        else if (pid==0){
+            char** args={j.job_name, NULL};
+            if (execvp(args[0], args)==-1){
+                perror("Command could not be executed");
+            }
+        }
+        else {
+            j.pid = pid;
+            clock_gettime(CLOCK_MONOTONIC,&j.start_time);
+            clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
+            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
+            if (index>=1000){
+                perror("Ready Queue Full");
+                atomic_fetch_sub(&shared_mem->ready_count,1);
+            }
+            shared_mem->ready[index]=j;
+        }
     }
 }
 
@@ -352,7 +364,10 @@ int main(int argc, char* argv[]){
     }
     else if (scheduler_pid == 0){
         while (1){
-            sleep(TSLICE);
+            unsigned int sleep_time=TSLICE;
+            while (sleep_time>0){
+                sleep_time=sleep(sleep_time);       //if signal comes the sleep will continue.
+            }
             context_switch();
         }
         exit(1);
