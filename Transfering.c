@@ -13,6 +13,167 @@
 
 typedef struct timespec timespec;
 
+
+typedef struct Job_PCB{
+    pid_t pid;
+    char* job_name;
+    timespec wait_time;
+    timespec start_time;
+    timespec end_time;
+    timespec prev_time;
+    int priority;
+    //completion time = end_time - start_time
+} Job_PCB;
+
+int NCPU;
+float TSLICE;
+
+void context_switch(){
+    //code for the running and ready queue thing.
+    if (shared_mem->ready_count==0 && shared_mem->running_count==0){        //if no processes have arrived or running.
+        return;
+    }
+
+    //Removing processes from running queue;
+    for (int i=0; i<shared_mem->running_count; i++){
+        Job_PCB j=shared_mem->running[i];
+        int status;
+        int result=waitpid(j.pid, &status, WNOHANG);
+        if (result==-1){
+            printf("%d", j.pid);
+            perror("Error checking job status");
+            continue;
+        }
+        timespec cur_time;
+        clock_gettime(CLOCK_MONOTONIC, &cur_time);
+        j.wait_time.tv_sec+=(cur_time.tv_sec-j.prev_time.tv_sec);
+        j.wait_time.tv_nsec+=(cur_time.tv_nsec-j.prev_time.tv_nsec);
+        if (j.wait_time.tv_nsec<0){
+            j.wait_time.tv_sec--;
+            j.wait_time.tv_nsec+=1000000000;
+        }
+        if (result==0){             //Job not finished.
+            kill(j.pid, SIGSTOP);
+            //wait time.
+            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
+            if (index>=1000){
+                perror("Ready Queue Full");
+                atomic_fetch_sub(&shared_mem->ready_count,1);
+                free(j.job_name);
+                continue;
+            }
+            shared_mem->ready[index]=j;
+        }
+        else{               //Job finished.
+            clock_gettime(CLOCK_MONOTONIC,&j.end_time);
+            if (shared_mem->terminated_count>=1000){
+                perror("Memory assigned for terminated processes full");
+                continue;
+            }
+            shared_mem->terminated[shared_mem->terminated_count++]=j;
+        }
+    }
+
+    //Running processes                                                         //*********Think about the race condition. */
+    int to_run=(NCPU<shared_mem->ready_count? NCPU: shared_mem->ready_count);
+    for (int i=0; i<to_run; i++){
+        Job_PCB j = shared_mem->ready[i];
+        kill(j.pid, SIGUSR1);   //For starting execution if not started.
+        kill(j.pid, SIGCONT); // Continue the job
+        shared_mem->running[shared_mem->running_count++] = j;
+    }
+
+    for (int i=0; i<shared_mem->ready_count-to_run; i++){
+        shared_mem->ready[i]=shared_mem->ready[i+to_run];
+    }
+
+    atomic_fetch_sub(&shared_mem->ready_count,to_run);
+}
+
+static void my_handler(int signum){
+    if (signum==SIGUSR2){
+        Job_PCB j;
+        j.job_name=strdup(shared_mem->new_job.job_name);
+        j.wait_time.tv_sec=0;
+        j.wait_time.tv_nsec=0;
+        j.priority=shared_mem->new_job.priority;
+        int pid=fork();
+        if (pid<0){
+            perror("Fork Failed");
+        }
+        else if (pid==0){
+            char* args[]={j.job_name, NULL};
+            if (execvp(args[0], args)==-1){
+                perror("Command could not be executed");
+            }
+        }
+        else {
+            j.pid = pid;
+            clock_gettime(CLOCK_MONOTONIC,&j.start_time);
+            clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
+            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
+            if (index>=1000){
+                perror("Ready Queue Full");
+                atomic_fetch_sub(&shared_mem->ready_count,1);
+            }
+            shared_mem->ready[index]=j;
+        }
+    }
+}
+
+int main(int argc, char* argv[]){
+
+    struct sigaction sig;
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = my_handler;
+    sigaction(SIGUSR2, &sig, NULL);
+
+    NCPU = atoi(argv[1]);
+    TSLICE = strtof(argv[2],NULL)/10;
+
+    while (1){
+        unsigned int sleep_time=TSLICE;
+            while (sleep_time>0){
+                sleep_time=sleep(sleep_time);       //if signal comes the sleep will continue.
+            }
+            context_switch();
+    }
+
+    exit(1);
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<unistd.h>
+#include<sys/wait.h>
+#include<time.h>
+#include<sys/mman.h>    //mmap and munmap
+#include<stdatomic.h>
+#include<fcntl.h>       //shm_open and ftruncate
+#include<signal.h>
+
+typedef struct timespec timespec;
+
 typedef struct Job_PCB{
     pid_t pid;
     char* job_name;
@@ -182,68 +343,6 @@ void shell_loop(){
   } while (status);
 }
 
-void context_switch(){
-    //code for the running and ready queue thing.
-    if (shared_mem->ready_count==0 && shared_mem->running_count==0){        //if no processes have arrived or running.
-        return;
-    }
-
-    //Removing processes from running queue;
-    for (int i=0; i<shared_mem->running_count; i++){
-        Job_PCB j=shared_mem->running[i];
-        int status;
-        int result=waitpid(j.pid, &status, WNOHANG);
-        if (result==-1){
-            printf("%d", j.pid);
-            perror("Error checking job status");
-            continue;
-        }
-        timespec cur_time;
-        clock_gettime(CLOCK_MONOTONIC, &cur_time);
-        j.wait_time.tv_sec+=(cur_time.tv_sec-j.prev_time.tv_sec);
-        j.wait_time.tv_nsec+=(cur_time.tv_nsec-j.prev_time.tv_nsec);
-        if (j.wait_time.tv_nsec<0){
-            j.wait_time.tv_sec--;
-            j.wait_time.tv_nsec+=1000000000;
-        }
-        if (result==0){             //Job not finished.
-            kill(j.pid, SIGSTOP);
-            //wait time.
-            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
-            if (index>=1000){
-                perror("Ready Queue Full");
-                atomic_fetch_sub(&shared_mem->ready_count,1);
-                free(j.job_name);
-                continue;
-            }
-            shared_mem->ready[index]=j;
-        }
-        else{               //Job finished.
-            clock_gettime(CLOCK_MONOTONIC,&j.end_time);
-            if (shared_mem->terminated_count>=1000){
-                perror("Memory assigned for terminated processes full");
-                continue;
-            }
-            shared_mem->terminated[shared_mem->terminated_count++]=j;
-        }
-    }
-
-    //Running processes                                                         //*********Think about the race condition. */
-    int to_run=(NCPU<shared_mem->ready_count? NCPU: shared_mem->ready_count);
-    for (int i=0; i<to_run; i++){
-        Job_PCB j = shared_mem->ready[i];
-        kill(j.pid, SIGUSR1);   //For starting execution if not started.
-        kill(j.pid, SIGCONT); // Continue the job
-        shared_mem->running[shared_mem->running_count++] = j;
-    }
-
-    for (int i=0; i<shared_mem->ready_count-to_run; i++){
-        shared_mem->ready[i]=shared_mem->ready[i+to_run];
-    }
-
-    atomic_fetch_sub(&shared_mem->ready_count,to_run);
-}
-
 
 static void my_handler(int signum) {                        //********************************Do with write
     if (signum == SIGINT){
@@ -276,38 +375,6 @@ static void my_handler(int signum) {                        //******************
         exit(0);
     }
 }
-
-static void sigusr2_handler(int signum){
-    if (signum==SIGUSR2){
-        Job_PCB j;
-        j.job_name=strdup(shared_mem->new_job.job_name);
-        j.wait_time.tv_sec=0;
-        j.wait_time.tv_nsec=0;
-        j.priority=shared_mem->new_job.priority;
-        int pid=fork();
-        if (pid<0){
-            perror("Fork Failed");
-        }
-        else if (pid==0){
-            char* args[]={j.job_name, NULL};
-            if (execvp(args[0], args)==-1){
-                perror("Command could not be executed");
-            }
-        }
-        else {
-            j.pid = pid;
-            clock_gettime(CLOCK_MONOTONIC,&j.start_time);
-            clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
-            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
-            if (index>=1000){
-                perror("Ready Queue Full");
-                atomic_fetch_sub(&shared_mem->ready_count,1);
-            }
-            shared_mem->ready[index]=j;
-        }
-    }
-}
-
 
 int main(int argc, char* argv[]){
     //error handling if ncpu or tslice not provided
@@ -366,17 +433,8 @@ int main(int argc, char* argv[]){
         exit(1);
     }
     else if (scheduler_pid == 0){
-        struct sigaction sh;
-        memset(&sh, 0, sizeof(sh));
-        sh.sa_handler = sigusr2_handler;
-        sigaction(SIGUSR2, &sh, NULL);
-        while (1){
-            unsigned int sleep_time=TSLICE;
-            while (sleep_time>0){
-                sleep_time=sleep(sleep_time);       //if signal comes the sleep will continue.
-            }
-            context_switch();
-        }
+        execlp("./scheduler", "./scheduler", argv[1], argv[2], NULL);
+        perror("Scheduler could not be started.");
         exit(1);
     }
     shell_loop();
