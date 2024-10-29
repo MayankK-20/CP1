@@ -157,8 +157,35 @@ void context_switch(){
     int rdc = ready_count;
     for (int i = 0; i < NCPU && i < rdc; i++){
         Job_PCB* j = dequeue(&ready_queue);
-        enqueue(&running_queue, j);
         ready_count--;
+        if (j->completed==-1){
+            pid_t pid=fork();
+            if (pid<0){
+                perror("fork in context switch failed");
+                exit(1);
+            }
+            else if(pid==0){
+                char* arguments[500];
+                char* token = strtok(buffer, " \t\n");
+                int i = 0;
+                while (token != NULL) {
+                    arguments[i++] = token;
+                    token = strtok(NULL, " \t\n");
+                }
+                arguments[i] = NULL;
+                char* args[]={arguments[1],NULL};
+                execvp(args[0], args)
+                perror("Execvp in context switch");
+                exit(0);
+            }
+            else{
+                j->completed=0;
+                j->pid=pid;
+                j.wait_time.tv_sec=0;
+                j.wait_time.tv_nsec=0;
+            }
+        }
+        enqueue(&running_queue, j);
         running_count++;
         kill(j->pid, SIGUSR1);   //For starting execution if not started.
         kill(j->pid, SIGCONT); 
@@ -170,6 +197,7 @@ void scheduler_signal_handler(int signum){
         printf("SIGUSR2 received\n");
         char buffer[512];
         read(pipefd[0], buffer, sizeof(buffer));
+        printf("buffer: %s\n",buffer);
         buffer[sizeof(buffer) - 1] = '\0';
         Job_PCB j;
         j.job_name=strdup(buffer);
@@ -177,35 +205,12 @@ void scheduler_signal_handler(int signum){
             perror("strdup failed");
             return;
         }
-        j.wait_time.tv_sec=0;
-        j.wait_time.tv_nsec=0;
-        char* arguments[500];
-        char* token = strtok(buffer, " \t\n");
-        int i = 0;
-        while (token != NULL) {
-            arguments[i++] = token;
-            token = strtok(NULL, " \t\n");
-        }
-        arguments[i] = NULL;
-        int pid=fork();
-        if (pid<0){
-            perror("Fork Failed");
-        }
-        else if (pid==0){
-            char* args[]={arguments[1],NULL};
-            if (execvp(args[0], args)==-1){
-                perror("Command could not be executed");
-            }
-            exit(0);
-        }
-        else {
-            j.pid = pid;
-            clock_gettime(CLOCK_MONOTONIC,&j.start_time);
-            clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
-            enqueue(&ready_queue, &j);
-            ready_count++;
-            printf("Ready[index].job_name: %s\n",j.job_name);
-        }
+        clock_gettime(CLOCK_MONOTONIC,&j.start_time);
+        clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
+        j.completed=-1;         
+        enqueue(&ready_queue, &j);
+        ready_count++;
+        printf("Ready[index].job_name: %s\n",j.job_name);
     }
     else if (signum==SIGINT){
         printf("SIGINT recieved Scheduler");
