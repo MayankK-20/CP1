@@ -1,404 +1,434 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<unistd.h>
-#include<sys/wait.h>
-#include<time.h>
-#include<sys/mman.h>    //mmap and munmap
-#include<stdatomic.h>
-#include<fcntl.h>       //shm_open and ftruncate
-#include<signal.h>
 
-//***************************give error handling for all sys calls. */
+#include <sys/resource.h>
+#include <string.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <time.h>
+#include <stdbool.h>
+#include <signal.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 
-typedef struct timespec timespec;
+#define MAX_STRINGS 1000
+#define MAX_STRING_LENGTH 100
 
-typedef struct Job_PCB{
-    pid_t pid;
-    char* job_name;
-    timespec wait_time;
-    timespec start_time;
-    timespec end_time;
-    timespec prev_time;
-    int priority;
-    //completion time = end_time - start_time
-} Job_PCB;
+volatile sig_atomic_t start_now = 0;
+volatile sig_atomic_t var = 0;
 
-typedef struct shm_t{
-    Job_PCB ready[1000];
-    atomic_int ready_count;
-    Job_PCB running[1000];
-    int running_count;
-    Job_PCB terminated[1000];
-    int terminated_count;
-    Job_PCB new_job;
-} shm_t;
+int NCPU = 0;
+int TSLICE = 0;
 
+struct my_history
+{
+    char my_name[MAX_STRING_LENGTH];
+    pid_t my_pid;
+    long int execution_time;
+    struct timeval start_time;
+    struct timeval end_time;
+    int flag;
+};
 
-int NCPU;
-float TSLICE;
-pid_t scheduler_pid;
-int shm_fd;
-shm_t* shared_mem;
+struct SharedMemory
+{
+    char strings[MAX_STRINGS][MAX_STRING_LENGTH];
+    int index;
+    int terminating_flag;
+};
 
-int launch2(char** args, int bg){
-    if (strcmp(args[0],"submit")==0){
-        shared_mem->new_job.job_name = strdup(args[1]);
-        if (shared_mem->new_job.job_name == NULL){
-            perror("strdup failed");
-            return 1;
-        }
-        if (args[2]!=NULL){
-            shared_mem->new_job.priority = atoi(args[2]);
-        }
-        else{
-            shared_mem->new_job.priority=1;
-        }
-        printf("Sending SIGUSR2");
-        kill(scheduler_pid, SIGUSR2);
-        return 1;
-    }
-    int pid=fork();
-    if (pid<0){
-        perror("Fork Failed");
-    }
-    else if (pid==0){
-        if (execvp(args[0], args)==-1){
-            //execvp searches for executable replaces it with the child process if succesfull it will never return else return -1;
-            perror("Command could not be executed");
-            return 1;
-        }
-    }
-    else {
-        if (!bg){
-            waitpid(pid,NULL,0);
-        }
-    }
-    return 1;
+struct SharedHistory
+{
+    struct my_history array[MAX_STRINGS];
+    int index_pointer;
+};
+
+typedef struct
+{
+    pid_t data[MAX_STRINGS];
+    int front;
+    int rear;
+} StringQueue;
+
+StringQueue *createStringQueue()
+{
+    StringQueue *queue = (StringQueue *)malloc(sizeof(StringQueue));
+    queue->front = 0;
+    queue->rear = -1;
+    return queue;
 }
 
-//Separating the string and launching the command
-int launch(char* whole_command) {
-    char* command = strtok(whole_command, "|");
-    char* commands[500];
-    int num_commands = 0;
-
-    while (command != NULL) {
-        commands[num_commands++] = command;
-        command = strtok(NULL, "|");
-    }
-
-    int fd[2];
-    int input = 0;                                                              // Initial input is stdin (0)
-    int pid;
-
-    for (int j=0; j<num_commands; j++) {
-
-        char* arguments[500];
-        char* token = strtok(commands[j], " \t\n");
-        int bg=0;                                                               //flag for background command &
-        int i = 0;
-        while (token != NULL) {
-            arguments[i++] = token;
-            token = strtok(NULL, " \t\n");
-        }
-        arguments[i] = NULL;
-
-        //check for background
-        if (i>0 && (strcmp(arguments[i-1],"&")==0)){                            // (arguments[i-1]=="&") not used cause in c memory address(pointers) are compared rather than the string
-            arguments[--i]=NULL;                                                //strcmp returns 0 when same, <0 when first string lexographically smaller, >0 when second string lexographically smaller
-            bg=1;
-        }
-
-        if (j==0 && 1==num_commands){
-            return launch2(arguments, bg);
-        }
-
-        if (j != num_commands - 1) {                                            // Not the last command
-            if (pipe(fd) == -1) {
-                perror("Pipe failed");
-                exit(1);
-            }
-        }
-
-        pid = fork();
-        if (pid < 0) {
-            perror("Fork Failed");
-            return 1;
-        }
-        if (pid == 0){
-            if (input != 0) {                                                   // Previous command has been executed we want to read output of that command
-                if (dup2(input, STDIN_FILENO) == -1) {
-                    perror("dup2 failed for input redirection");
-                    exit(1);
-                }
-                close(input);
-            }
-
-            if (j != num_commands - 1) {                                        // If not last command write here
-                if (dup2(fd[1], STDOUT_FILENO) == -1) {
-                    perror("dup2 failed for output");
-                    exit(1);
-                }
-                close(fd[1]);                                                   // Write through referece in STDOUT
-            }
-
-            close(fd[0]);                                                       // Read end is not used
-
-            if (execvp(arguments[0], arguments) == -1) {                        //Executing the current command
-                perror("Command execution failed");
-                exit(1);
-            }
-        }
-
-        if (!bg){
-            waitpid(pid, NULL, 0);
-        }
-
-        if (input != 0) {
-            close(input);                                                       // Closing previous pipe read
-        }
-        if (j != num_commands - 1) {
-            close(fd[1]);
-            input = fd[0];
-        }
-    }
-
-    return 1;
+int isStringQueueEmpty(StringQueue *queue)
+{
+    return queue->front > queue->rear;
 }
 
-char* read_user_input(){
-    char* command=NULL;                             //Where the command would be stored.
-    size_t commandSize=0;                           //Size allocated for command, getline can change it.
-    getline(&command, &commandSize, stdin);         //reads from stdin.
-    return command;
+int isStringQueueFull(StringQueue *queue)
+{
+    return (queue->rear - queue->front) >= MAX_STRINGS - 1;
 }
 
-void shell_loop(){
-  int status;
-  do{
-    printf("shell: ");
-    char* command = read_user_input();
-    status = launch(command);
-    free(command);
-  } while (status);
+int countStringQueue(StringQueue *queue)
+{
+    return (queue->rear - queue->front + 1);
 }
 
-void context_switch(){
-    //code for the running and ready queue thing.
-    if (shared_mem->ready_count==0 && shared_mem->running_count==0){        //if no processes have arrived or running.
+void enqueueString(StringQueue *queue, pid_t item)
+{
+    if (isStringQueueFull(queue))
+    {
+        printf("String Queue is full. Cannot enqueue.\n");
         return;
     }
 
-    //Removing processes from running queue;
-    for (int i=0; i<shared_mem->running_count; i++){
-        Job_PCB j=shared_mem->running[i];
-        int status;
-        int result=waitpid(j.pid, &status, WNOHANG);
-        if (result==-1){
-            printf("%d", j.pid);
-            perror("Error checking job status");
-            continue;
-        }
-        timespec cur_time;
-        clock_gettime(CLOCK_MONOTONIC, &cur_time);
-        j.wait_time.tv_sec+=(cur_time.tv_sec-j.prev_time.tv_sec);
-        j.wait_time.tv_nsec+=(cur_time.tv_nsec-j.prev_time.tv_nsec);
-        if (j.wait_time.tv_nsec<0){
-            j.wait_time.tv_sec--;
-            j.wait_time.tv_nsec+=1000000000;
-        }
-        if (result==0){             //Job not finished.
-            kill(j.pid, SIGSTOP);
-            //wait time.
-            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
-            if (index>=1000){
-                perror("Ready Queue Full");
-                atomic_fetch_sub(&shared_mem->ready_count,1);
-                free(j.job_name);
-                continue;
-            }
-            shared_mem->ready[index]=j;
-        }
-        else{               //Job finished.
-            clock_gettime(CLOCK_MONOTONIC,&j.end_time);
-            if (shared_mem->terminated_count>=1000){
-                perror("Memory assigned for terminated processes full");
-                continue;
-            }
-            shared_mem->terminated[shared_mem->terminated_count++]=j;
-        }
-    }
-
-    //Running processes                                                         //*********Think about the race condition. */
-    int to_run=(NCPU<shared_mem->ready_count? NCPU: shared_mem->ready_count);
-    for (int i=0; i<to_run; i++){
-        Job_PCB j = shared_mem->ready[i];
-        kill(j.pid, SIGUSR1);   //For starting execution if not started.
-        kill(j.pid, SIGCONT); // Continue the job
-        shared_mem->running[shared_mem->running_count++] = j;
-    }
-
-    for (int i=0; i<shared_mem->ready_count-to_run; i++){
-        shared_mem->ready[i]=shared_mem->ready[i+to_run];
-    }
-
-    atomic_fetch_sub(&shared_mem->ready_count,to_run);
+    queue->rear++;
+    queue->data[queue->rear] = item;
 }
 
-static void shell_signal_handler(int signum) {                        //********************************Do with write
-    if (signum == SIGINT){
-        printf("Recieved SIGINT");
-        //wait for all user processes to be executed.
-        while (shared_mem->ready_count>0 || shared_mem->running_count>0){
-            printf("All Jobs not completed yet");
-            sleep(TSLICE);
-        }
-        //print the name, pid, completion time, and wait time of all the jobs submitted by the user and exit gracefully.
-        for (int i=0; i<shared_mem->terminated_count; i++){
-            Job_PCB j=shared_mem->terminated[i];
-            printf("Command: %d\n",j.job_name);
-            printf("PID: %d\n",j.pid);
-            printf("Wait time: %ld seconds, %ld nanoseconds\n", j.wait_time.tv_sec, j.wait_time.tv_nsec);
-            timespec completion;
-            completion.tv_sec+=(j.end_time.tv_sec-j.start_time.tv_sec);
-            completion.tv_nsec+=(j.end_time.tv_nsec-j.start_time.tv_nsec);
-            if (completion.tv_nsec<0){
-                completion.tv_sec--;
-                completion.tv_nsec+=1000000000;
+pid_t dequeueString(StringQueue *queue)
+{
+    if (isStringQueueEmpty(queue))
+    {
+        return 0;
+    }
+
+    pid_t item = queue->data[queue->front];
+    queue->front++;
+    return item;
+}
+
+struct SharedMemory *access_shared_memory()
+{
+    int shm_fd;
+    struct SharedMemory *shared_mem;
+    shm_fd = shm_open("/my_shared_memory", O_RDWR, 0666);
+    if (shm_fd == -1)
+    {
+        perror("my_shared_memory : shm_open");
+        exit(1);
+    }
+    shared_mem = (struct SharedMemory *)mmap(0, sizeof(struct SharedMemory), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shared_mem == MAP_FAILED)
+    {
+        perror("mmap");
+        exit(1);
+    }
+    shared_mem->terminating_flag = 0;
+    return shared_mem;
+}
+
+struct SharedHistory *create_shared_history()
+{
+    int shm_fd;
+    struct SharedHistory *shared_history;
+    shm_fd = shm_open("/my_shared_history", O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1)
+    {
+        perror("my_shared_history : shm_open");
+        exit(1);
+    }
+    if (ftruncate(shm_fd, sizeof(struct SharedHistory)) == -1)
+    {
+        perror("ftruncate");
+        exit(1);
+    }
+    shared_history = (struct SharedHistory *)mmap(0, sizeof(struct SharedHistory), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shared_history == MAP_FAILED)
+    {
+        perror("mmap");
+        exit(1);
+    }
+
+    shared_history->index_pointer = 0;
+    return shared_history;
+}
+
+struct SharedMemory *shared_mem;
+StringQueue *queue;
+StringQueue *remaining_jobs;
+struct SharedHistory *shared_history;
+pid_t my_parent;
+
+void memory_clear(struct SharedMemory *shared_mem)
+{
+    munmap(shared_mem, sizeof(struct SharedMemory));
+    free(queue);
+    free(remaining_jobs);
+    return;
+}
+
+void get_current_time(struct timeval *current_time)
+{
+    gettimeofday(current_time, NULL);
+}
+
+void check_for_more_jobs()
+{
+    if (isStringQueueEmpty(queue))
+    {
+        return;
+    }
+    else
+    {
+        int num = countStringQueue(queue);
+        for (int i = 0; i < num; i++)
+        {
+            pid_t child_pid = dequeueString(queue);
+            int status;
+            kill(child_pid, SIGCONT);
+            int result = waitpid(child_pid, &status,0);
+            if (result == child_pid)
+            {
+                if (WIFEXITED(status))
+                {   
+                    printf("Child process with pid: %d exited with status: %d\n",child_pid, WEXITSTATUS(status));
+                }
+                else
+                {
+                    printf("Child process with pid: %d terminated abnormally\n",child_pid);
+                }
             }
-            printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
-            printf("\n");
-            free(j.job_name);
+            else{
+                ;
+            }
         }
-        kill(scheduler_pid, SIGINT);
-        munmap(shared_mem, sizeof(shm_t));
-        shm_unlink("/shm_struct");
-        close(shm_fd);
+    }
+}
+
+void signal_handler(int signum)
+{
+    if (signum == SIGCONT)
+    {
+        if (shared_mem->terminating_flag == 0)
+        {
+            start_now = 1;
+            var = 0;
+        }
+    }
+    else if (signum == SIGTERM)
+    {
+        check_for_more_jobs();
+        usleep(10);
+        memory_clear(shared_mem);
+        munmap(shared_history, sizeof(struct SharedHistory));
+        shm_unlink("/my_shared_memory");
+        shm_unlink("/my_shared_history");
         exit(0);
     }
 }
 
-void scheduler_signal_handler(int signum){
-    if (signum==SIGUSR2){
-        printf("SIGUSR2 received\n");
-        Job_PCB j;
-        j.job_name=strdup(shared_mem->new_job.job_name);
-        j.wait_time.tv_sec=0;
-        j.wait_time.tv_nsec=0;
-        j.priority=shared_mem->new_job.priority;
-        int pid=fork();
-        if (pid<0){
-            perror("Fork Failed");
-        }
-        else if (pid==0){
-            char* args[]={j.job_name, NULL};
-            if (execvp(args[0], args)==-1){
-                perror("Command could not be executed");
-            }
-        }
-        else {
-            j.pid = pid;
-            clock_gettime(CLOCK_MONOTONIC,&j.start_time);
-            clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
-            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
-            if (index>=1000){
-                perror("Ready Queue Full");
-                atomic_fetch_sub(&shared_mem->ready_count,1);
-            }
-            shared_mem->ready[index]=j;
-        }
+pid_t peekString(StringQueue *queue)
+{
+    if (isStringQueueEmpty(queue))
+    {
+        return 0;
     }
-    else if (signum==SIGINT){
-        printf("SIGINT recieved");
-        munmap(shared_mem, sizeof(shm_t));
-    }
+
+    return queue->data[queue->front];
 }
 
-void create_shared_memory(){
-    shm_unlink("/shm_struct"); //remove if anything earlier.
-    //o_creat = create if not there. o_rdwr = read and write, 0666 = wide access for owner, group and others. read and write permission mainly.
-    shm_fd = shm_open("/shm_struct", O_CREAT | O_RDWR, 0666);       //file descriptor.
-    if (shm_fd == -1) {
-        perror("shm_open failed");
-        exit(1);
+int find_valid_index_in_shared_history(pid_t item)
+{
+    int number_of_items = shared_history->index_pointer;
+    for (int i = 0; i < number_of_items; i++)
+    {
+        if (shared_history->array[i].my_pid == item)
+        {
+            return i;
+        }
     }
-
-    // Set size of shared memory
-    if (ftruncate(shm_fd, sizeof(shm_t)) == -1) {
-        perror("ftruncate failed");
-        close(shm_fd);
-        exit(1);
-    }
-
-    // Map shared memory
-    shared_mem = mmap(NULL, sizeof(shm_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (shared_mem == MAP_FAILED) {
-        perror("mmap failed");
-        close(shm_fd);
-        exit(1);
-    }
-
-    //Initializing
-    memset(shared_mem, 0, sizeof(shm_t));    
-    atomic_init(&shared_mem->ready_count, 0);
-    shared_mem->running_count=0;
-    shared_mem->terminated_count=0;
-    shared_mem->new_job.job_name=NULL;
-    shared_mem->new_job.priority=1;
+    return -1;
 }
 
-int main(int argc, char* argv[]){
-    //error handling if ncpu or tslice not provided
-    if (argc != 3){
-        perror("insufficient command line arguments provided");
+struct SharedMemory *shared_mem;
+int main(int argc, char **argv)
+{
+    if (argc != 3)
+    {
+        printf("Provide all arguments!!!!!\n");
         exit(1);
     }
-
-    //error checking if ncpu or tslice is not number
-    // if (!is_numeric(argv[1] || !is_numeric(argv[2]){
-    //     perror("ncpu and tslice must be positive numbers");
-    //     exit(1);
-    // }
-
-    // ncpu and tslice cannot have leading + as well (can have whitespace leading)
     NCPU = atoi(argv[1]);
-    TSLICE = strtof(argv[2],NULL);
+    TSLICE = atoi(argv[2]);
+    struct sigaction signal_scheduler;
+    signal_scheduler.sa_handler = signal_handler;
+    sigaction(SIGCONT, &signal_scheduler, NULL);
+    sigaction(SIGTERM, &signal_scheduler, NULL);
+    my_parent = getppid();
+    shared_mem = access_shared_memory();
+    shared_history = create_shared_history();
+    queue = createStringQueue();
+    remaining_jobs = createStringQueue();
+    setsid();
+    while (true)
+    {
+        if (start_now == 1)
+        {
+            int number_of_strings = shared_mem->index;
+            while (true)
+            {
 
-    if (NCPU<=0 || TSLICE<=0.0){
-        perror("invalid ncpu or tslice values");
-        exit(1);
-    }
-
-    create_shared_memory();
-    printf("created shared memory");
-
-    scheduler_pid = fork();
-    if (scheduler_pid < 0){
-        perror("fork failed!");
-        exit(1);
-    }
-    else if (scheduler_pid == 0){
-        struct sigaction ssh;
-        memset(&ssh, 0, sizeof(ssh));
-        ssh.sa_handler = scheduler_signal_handler;
-        sigaction(SIGUSR2, &ssh, NULL);
-        sigaction(SIGINT, &ssh, NULL);
-        printf("TSLICE: %f", TSLICE);
-        fflush(stdout);
-        while (1){
-            unsigned int sleep_time=TSLICE;
-            while (sleep_time>0){
-                sleep_time=usleep(sleep_time);       //if signal comes the sleep will continue.
+                if (var >= number_of_strings)
+                {
+                    // start_now = 0;
+                    // kill(my_parent, SIGUSR1);
+                    break;
+                }
+                // add check for data valid in shared_mem
+                char *item = shared_mem->strings[var];
+                struct my_history entry;
+                // entry = (struct my_history *)malloc(sizeof(struct my_history));
+                pid_t new_child = fork();
+                if (new_child == 0)
+                {
+                    signal(SIGCONT, SIG_DFL);
+                    usleep(10000);
+                    execlp(item, item, NULL);
+                    perror("error here: %s");
+                    exit(1);
+                }
+                else if (new_child > 0)
+                {
+                    usleep(10000);
+                    kill(new_child, SIGSTOP);
+                }
+                else
+                {
+                    printf("Failed to fork a process!!!!!\n");
+                }
+                enqueueString(queue, new_child);
+                strcpy(entry.my_name, item);
+                entry.my_pid = new_child;
+                entry.execution_time = 0;
+                entry.flag = -1;
+                get_current_time(&entry.start_time);
+                int p = shared_history->index_pointer;
+                shared_history->array[p] = entry;
+                shared_history->index_pointer++;
+                // free(entry);
+                var++;
             }
-            context_switch();
+            while (true)
+            {
+                if (isStringQueueEmpty(remaining_jobs))
+                {
+                    break;
+                }
+                else
+                {
+                    pid_t old_child = dequeueString(remaining_jobs);
+                    if (old_child == 0)
+                    {
+                        continue;
+                    }
+                    enqueueString(queue, old_child);
+                }
+            }
+            if (isStringQueueEmpty(queue))
+            {
+                start_now = 0;
+                kill(my_parent, SIGUSR1);
+                usleep(10000);
+            }
+            else
+            {
+                for (int i = 0; i < NCPU; i++)
+                {
+                    if (isStringQueueEmpty(queue))
+                    {
+                        // start_now = 0;
+                        continue;
+                        // kill(my_parent, SIGUSR1);
+                    }
+                    pid_t child_pid = dequeueString(queue);
+                    if (child_pid == 0)
+                    {
+                        continue;
+                    }
+                    int status;
+                    kill(child_pid, SIGCONT);
+                    usleep(1000 * TSLICE);
+                    int result = waitpid(child_pid, &status, WNOHANG);
+                    if (result == 0)
+                    {
+                        kill(child_pid, SIGSTOP);
+                        enqueueString(remaining_jobs, child_pid);
+                        int updater = find_valid_index_in_shared_history(child_pid);
+                        if (updater != -1)
+                        {
+                            shared_history->array[updater].execution_time += (long int)TSLICE;
+                            get_current_time(&shared_history->array[updater].end_time);
+                            shared_history->array[updater].flag = 0;
+                        }
+                    }
+                    else if (result == child_pid)
+                    {
+                        if (WIFEXITED(status))
+                        {
+                            printf("Child process with pid: %d exited with status: %d\n",child_pid, WEXITSTATUS(status));
+                            int updater = find_valid_index_in_shared_history(child_pid);
+                            if (updater != -1)
+                            {
+                                shared_history->array[updater].execution_time += (long int)TSLICE;
+                                get_current_time(&shared_history->array[updater].end_time);
+                                shared_history->array[updater].flag = 1;
+                            }
+                            else
+                            {
+                                printf("Child with pid: %d Didn't ran successfully!!!!!\n",child_pid);
+                            }
+                        }
+                        else
+                        {
+                            printf("Child process terminated abnormally\n");
+                        }
+                    }
+                    else
+                    {
+                        ;
+                    }
+                }
+                if (isStringQueueEmpty(queue))
+                {
+                    // start_now = 0;
+                    // kill(my_parent, SIGUSR1);
+                    ;
+                }
+                else
+                {
+                    int num_of_current_elements = countStringQueue(queue);
+                    if (num_of_current_elements == 0)
+                    {
+                        ;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < num_of_current_elements; i++)
+                        {
+                            if (isStringQueueEmpty(queue))
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                pid_t temp_child = dequeueString(queue);
+                                kill(temp_child, SIGCONT);
+                                usleep(10);
+                                kill(temp_child, SIGSTOP);
+                                enqueueString(queue, temp_child);
+                            }
+                        }
+                    }
+                }
+                start_now = 0;
+                kill(my_parent, SIGUSR1);
+            }
         }
-        exit(1);
+        else
+        {
+            ;
+        }
     }
-    struct sigaction sig;
-    memset(&sig, 0, sizeof(sig));
-    sig.sa_handler = shell_signal_handler;
-    sigaction(SIGINT, &sig, NULL);
-    shell_loop();
-    return 0;
 }
