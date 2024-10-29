@@ -51,8 +51,8 @@ int launch2(char** args, int bg){
         if (args[2]!=NULL){
             shared_mem->new_job.priority = atoi(args[2]);
         }
-        printf("Sending SIGTERM");
-        kill(scheduler_pid, SIGTERM);
+        printf("Sending SIGUSR2");
+        kill(scheduler_pid, SIGUSR2);
         return 1;
     }
     int pid=fork();
@@ -243,7 +243,6 @@ void context_switch(){
     atomic_fetch_sub(&shared_mem->ready_count,to_run);
 }
 
-
 static void shell_signal_handler(int signum) {                        //********************************Do with write
     if (signum == SIGINT){
         printf("Recieved SIGINT");
@@ -278,7 +277,7 @@ static void shell_signal_handler(int signum) {                        //********
 }
 
 void scheduler_signal_handler(int signum){
-    if (signum==SIGTERM){
+    if (signum==SIGUSR2){
         printf("SIGTERM received\n");
         Job_PCB j;
         j.job_name=strdup(shared_mem->new_job.job_name);
@@ -359,7 +358,7 @@ int main(int argc, char* argv[]){
 
     // ncpu and tslice cannot have leading + as well (can have whitespace leading)
     NCPU = atoi(argv[1]);
-    TSLICE = strtof(argv[2],NULL)/10;
+    TSLICE = strtof(argv[2],NULL);
 
     if (NCPU<=0 || TSLICE<=0.0){
         perror("invalid ncpu or tslice values");
@@ -367,6 +366,7 @@ int main(int argc, char* argv[]){
     }
 
     create_shared_memory();
+    printf("created shared memory");
 
     scheduler_pid = fork();
     if (scheduler_pid < 0){
@@ -375,10 +375,12 @@ int main(int argc, char* argv[]){
     }
     else if (scheduler_pid == 0){
         struct sigaction ssh;
-        memset(&ssh, 0, sizeof(ssh))
+        memset(&ssh, 0, sizeof(ssh));
         ssh.sa_handler = scheduler_signal_handler;
-        sigaction(SIGTERM, &ssh, NULL);
+        sigaction(SIGUSR2, &ssh, NULL);
         sigaction(SIGINT, &ssh, NULL);
+        printf("TSLICE: %f", TSLICE);
+        fflush(stdout);
         while (1){
             unsigned int sleep_time=TSLICE;
             while (sleep_time>0){
