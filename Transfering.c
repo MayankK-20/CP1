@@ -165,6 +165,10 @@ void context_switch(){
                 exit(1);
             }
             else if(pid==0){
+                char* buffer=strdup(j->job_name);
+                if (buffer==NULL){
+                    perror("strdup in context switch failed");
+                }
                 char* arguments[500];
                 char* token = strtok(buffer, " \t\n");
                 int i = 0;
@@ -174,15 +178,15 @@ void context_switch(){
                 }
                 arguments[i] = NULL;
                 char* args[]={arguments[1],NULL};
-                execvp(args[0], args)
+                execvp(args[0], args);
                 perror("Execvp in context switch");
                 exit(0);
             }
             else{
                 j->completed=0;
                 j->pid=pid;
-                j.wait_time.tv_sec=0;
-                j.wait_time.tv_nsec=0;
+                j->wait_time.tv_sec=0;
+                j->wait_time.tv_nsec=0;
             }
         }
         enqueue(&running_queue, j);
