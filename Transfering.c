@@ -51,7 +51,8 @@ int launch2(char** args, int bg){
         if (args[2]!=NULL){
             shared_mem->new_job.priority = atoi(args[2]);
         }
-        kill(scheduler_pid, SIGUSR2);
+        printf("Sending SIGTERM");
+        kill(scheduler_pid, SIGTERM);
         return 1;
     }
     int pid=fork();
@@ -175,7 +176,6 @@ void shell_loop(){
   do{
     printf("shell: ");
     char* command = read_user_input();
-    name=strdup(command);
     status = launch(command);
     free(command);
   } while (status);
@@ -244,10 +244,12 @@ void context_switch(){
 }
 
 
-static void my_handler(int signum) {                        //********************************Do with write
+static void shell_signal_handler(int signum) {                        //********************************Do with write
     if (signum == SIGINT){
+        printf("Recieved SIGINT");
         //wait for all user processes to be executed.
         while (shared_mem->ready_count>0 || shared_mem->running_count>0){
+            printf("All Jobs not completed yet");
             sleep(TSLICE);
         }
         //print the name, pid, completion time, and wait time of all the jobs submitted by the user and exit gracefully.
@@ -267,8 +269,7 @@ static void my_handler(int signum) {                        //******************
             printf("\n");
             free(j.job_name);
         }
-        free(name);
-        kill(scheduler_pid, SIGKILL);
+        kill(scheduler_pid, SIGINT);
         munmap(shared_mem, sizeof(shm_t));
         shm_unlink("/shm_struct");
         close(shm_fd);
@@ -276,8 +277,9 @@ static void my_handler(int signum) {                        //******************
     }
 }
 
-static void sigusr2_handler(int signum){
-    if (signum==SIGUSR2){
+void scheduler_signal_handler(int signum){
+    if (signum==SIGTERM){
+        printf("SIGTERM received\n");
         Job_PCB j;
         j.job_name=strdup(shared_mem->new_job.job_name);
         j.wait_time.tv_sec=0;
@@ -305,8 +307,42 @@ static void sigusr2_handler(int signum){
             shared_mem->ready[index]=j;
         }
     }
+    else if (signum==SIGINT){
+        printf("SIGINT recieved");
+        munmap(shared_mem, sizeof(shm_t));
+    }
 }
 
+void create_shared_memory(){
+    shm_unlink("/shm_struct"); //remove if anything earlier.
+    //o_creat = create if not there. o_rdwr = read and write, 0666 = wide access for owner, group and others. read and write permission mainly.
+    shm_fd = shm_open("/shm_struct", O_CREAT | O_RDWR, 0666);       //file descriptor.
+    if (shm_fd == -1) {
+        perror("shm_open failed");
+        exit(1);
+    }
+
+    // Set size of shared memory
+    if (ftruncate(shm_fd, sizeof(shm_t)) == -1) {
+        perror("ftruncate failed");
+        close(shm_fd);
+        exit(1);
+    }
+
+    // Map shared memory
+    shared_mem = mmap(NULL, sizeof(shm_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shared_mem == MAP_FAILED) {
+        perror("mmap failed");
+        close(shm_fd);
+        exit(1);
+    }
+
+    //Initializing
+    memset(shared_mem, 0, sizeof(shm_t));    
+    atomic_init(&shared_mem->ready_count, 0);
+    shared_mem->running_count=0;
+    shared_mem->terminated_count=0;
+}
 
 int main(int argc, char* argv[]){
     //error handling if ncpu or tslice not provided
@@ -329,35 +365,8 @@ int main(int argc, char* argv[]){
         perror("invalid ncpu or tslice values");
         exit(1);
     }
-    
-    struct sigaction sig;
-    memset(&sig, 0, sizeof(sig));
-    sig.sa_handler = my_handler;
-    sigaction(SIGINT, &sig, NULL);
-//o_creat = create if not there. o_rdwr = read and write, 0666 = wide access for owner, group and others. read and write permission mainly.
-    shm_fd = shm_open("/shm_struct", O_CREAT | O_RDWR, 0666);       //file descriptor.
-    if (shm_fd == -1) {
-        perror("shm_open failed");
-        exit(1);
-    }
 
-    // Set size of shared memory
-    if (ftruncate(shm_fd, sizeof(shm_t)) == -1) {
-        perror("ftruncate failed");
-        exit(1);
-    }
-
-    // Map shared memory
-    shared_mem = mmap(NULL, sizeof(shm_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (shared_mem == MAP_FAILED) {
-        perror("mmap failed");
-        exit(1);
-    }
-
-    //Initializing
-    atomic_init(&shared_mem->ready_count, 0);
-    shared_mem->running_count=0;
-    shared_mem->terminated_count=0;
+    create_shared_memory();
 
     scheduler_pid = fork();
     if (scheduler_pid < 0){
@@ -365,19 +374,24 @@ int main(int argc, char* argv[]){
         exit(1);
     }
     else if (scheduler_pid == 0){
-        struct sigaction sh;
-        memset(&sh, 0, sizeof(sh));
-        sh.sa_handler = sigusr2_handler;
-        sigaction(SIGUSR2, &sh, NULL);
+        struct sigaction ssh;
+        memset(&ssh, 0, sizeof(ssh))
+        ssh.sa_handler = scheduler_signal_handler;
+        sigaction(SIGTERM, &ssh, NULL);
+        sigaction(SIGINT, &ssh, NULL);
         while (1){
             unsigned int sleep_time=TSLICE;
             while (sleep_time>0){
-                sleep_time=sleep(sleep_time);       //if signal comes the sleep will continue.
+                sleep_time=usleep(sleep_time);       //if signal comes the sleep will continue.
             }
             context_switch();
         }
         exit(1);
     }
+    struct sigaction sig;
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = shell_signal_handler;
+    sigaction(SIGINT, &sig, NULL);
     shell_loop();
     return 0;
 }
