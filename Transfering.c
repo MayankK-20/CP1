@@ -183,11 +183,11 @@ void context_switch(){
             //wait time.
             timespec cur_time;
             clock_gettime(CLOCK_MONOTONIC, &cur_time);
-            j.wait_time.tv_sec+=(cur_time.tv_sec-j.prev_time.tv_sec);
-            j.wait_time.tv_nsec+=(cur_time.tv_nsec-j.prev_time.tv_nsec);
-            if (j.wait_time.tv_nsec<0){
-                j.wait_time.tv_sec--;
-                j.wait_time.tv_nsec+=1000000000;
+            j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
+            j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
+            if (j->wait_time.tv_nsec<0){
+                j->wait_time.tv_sec--;
+                j->wait_time.tv_nsec+=1000000000;
             }
             int index=atomic_fetch_add(&shared_mem->ready_count,1); 
 
@@ -212,11 +212,11 @@ void context_switch(){
             clock_gettime(CLOCK_MONOTONIC,&j->end_time);
             timespec cur_time;
             clock_gettime(CLOCK_MONOTONIC, &cur_time);
-            j.wait_time.tv_sec+=(cur_time.tv_sec-j.prev_time.tv_sec);
-            j.wait_time.tv_nsec+=(cur_time.tv_nsec-j.prev_time.tv_nsec);
-            if (j.wait_time.tv_nsec<0){
-                j.wait_time.tv_sec--;
-                j.wait_time.tv_nsec+=1000000000;
+            j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
+            j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
+            if (j->wait_time.tv_nsec<0){
+                j->wait_time.tv_sec--;
+                j->wait_time.tv_nsec+=1000000000;
             }
             if (terminated_count>=1000){
                 perror("Memory assigned for terminated processes full");
