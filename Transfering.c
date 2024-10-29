@@ -1,230 +1,342 @@
-#include <sys/resource.h>
-#include <string.h>
-#include <sys/time.h>
-#include <sys/wait.h>
-#include <sys/types.h>
-#include <time.h>
-#include <stdbool.h>
-#include <signal.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-// Define constants
-#define MAX_STRINGS 1000
-#define MAX_STRING_LENGTH 100
-#define SHARED_MEM_SIZE (MAX_STRINGS * MAX_STRING_LENGTH)
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<unistd.h>
+#include<sys/wait.h>
+#include<time.h>
+#include<sys/mman.h>    //mmap and munmap
+#include<stdatomic.h>
+#include<fcntl.h>       //shm_open and ftruncate
+#include<signal.h>
+
+typedef struct timespec timespec;
+
+typedef struct Job_PCB{
+    pid_t pid;
+    char* job_name;
+    timespec wait_time;
+    timespec start_time;
+    timespec end_time;
+    timespec prev_time;
+    int completed;
+    //completion time = end_time - start_time
+} Job_PCB;
+
+typedef struct shm_t{
+    atomic_int ready_count;
+    atomic_int running_count;
+} shm_t;
+
+Job_PCB ready[1000];
+Job_PCB running[1000];
+Job_PCB terminated[1000];
+int terminated_count;
+int NCPU;
+float TSLICE;
 pid_t scheduler_pid;
-volatile sig_atomic_t alarm_triggered = 0;
-bool start_loop = false;
+int shm_fd;
+shm_t* shared_mem;
+int pipefd[2];
 
-// Define a structure to hold the history of executed commands
-struct my_history{
-    char my_name[MAX_STRING_LENGTH];
-    pid_t my_pid;
-    long int execution_time;
-    struct timeval start_time;
-    struct timeval end_time;
-    int flag;
-};
-// Define a structure to hold an array of command history
-struct SharedHistory{
-    struct my_history array[MAX_STRINGS];
-    int index_pointer;
-    
-};
+int launch(char* command){
+    if (command==NULL || strlen(command)==0){
+        return 0;
+    }
+    char* comm = strdup(command);
+    if (comm==NULL){
+        perror("strdup failed");
+        return 1;
+    }
+    char* arguments[500];
+    char* token = strtok(command, " \t\n");                                                              //flag for background command &
+    int i = 0;
+    while (token != NULL) {
+        arguments[i++] = token;
+        token = strtok(NULL, " \t\n");
+    }
+    arguments[i] = NULL;
+    if (strcmp(arguments[0],"submit")==0){
+        write(pipefd[1], comm, strlen(comm) + 1); //writing to pipe.
+        kill(scheduler_pid, SIGUSR2);
+        return 1;
+    }
+    //if command not submit.
+    int pid=fork();
+    if (pid<0){
+        perror("Fork Failed");
+    }
+    else if (pid==0){
+        if (execvp(arguments[0], arguments)==-1){
+            //execvp searches for executable replaces it with the child process if succesfull it will never return else return -1;
+            perror("Command could not be executed");
+            return 1;
+        }
+    }
+    else{
+        waitpid(pid,NULL,0);
+    }
+    return 1;
+}
 
-// Define a structure for shared memory to store command history
-struct SharedMemory {
-    char strings[MAX_STRINGS][MAX_STRING_LENGTH];
-    int index;
-    int terminating_flag;
-};
-// Function to handle termination of the shell
-void terminator();
-// Function to create and initialize shared memory for command history
-struct SharedMemory *create_shared_memory() {
-    int shm_fd;
-    struct SharedMemory *shared_mem;
-    shm_fd = shm_open("/my_shared_memory", O_CREAT | O_RDWR, 0666);
+char* read_user_input(){
+    char* command=NULL;                             //Where the command would be stored.
+    size_t commandSize=0;                           //Size allocated for command, getline can change it.
+    getline(&command, &commandSize, stdin);         //reads from stdin.
+    return command;
+}
+
+void shell_loop(){
+  int status;
+  do{
+    printf("shell: ");
+    char* command = read_user_input();
+    status = launch(command);
+    free(command);
+  } while (status);
+}
+
+void context_switch(){
+    //code for the running and ready queue thing.
+    if (shared_mem->ready_count==0 && shared_mem->running_count==0){        //if no processes have arrived or running.
+        return;
+    }//fetch load
+
+    //Removing processes from running queue;
+    for (int i=0; i<shared_mem->running_count; i++){
+        Job_PCB j=running[i];
+        int status;
+        int result=waitpid(j.pid, &status, WNOHANG);
+        if (result==-1){
+            if (j.completed!=1){
+                j.completed=1;
+                 int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
+                if (index>=1000){
+                    perror("Ready Queue Full");
+                    atomic_fetch_sub(&shared_mem->ready_count,1);
+                    free(j.job_name);
+                    continue;
+                }
+                ready[index]=j;
+            }
+            continue;
+        }
+        timespec cur_time;
+        clock_gettime(CLOCK_MONOTONIC, &cur_time);
+        j.wait_time.tv_sec+=(cur_time.tv_sec-j.prev_time.tv_sec);
+        j.wait_time.tv_nsec+=(cur_time.tv_nsec-j.prev_time.tv_nsec);
+        if (j.wait_time.tv_nsec<0){
+            j.wait_time.tv_sec--;
+            j.wait_time.tv_nsec+=1000000000;
+        }
+        if (result==0){             //Job not finished.
+            kill(j.pid, SIGSTOP);
+            //wait time.
+            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
+            if (index>=1000){
+                perror("Ready Queue Full");
+                atomic_fetch_sub(&shared_mem->ready_count,1);
+                free(j.job_name);
+                continue;
+            }
+            ready[index]=j;
+        }
+        else{               //Job finished.
+            clock_gettime(CLOCK_MONOTONIC,&j.end_time);
+            if (terminated_count>=1000){
+                perror("Memory assigned for terminated processes full");
+                continue;
+            }
+            terminated[terminated_count++]=j;
+        }
+    }
+
+    //Running processes                                                         //*********Think about the race condition. */
+    int to_run=(NCPU>shared_mem->ready_count? shared_mem->ready_count: NCPU);
+    for (int i=0; i<to_run; i++){
+        Job_PCB j = ready[i];
+        kill(j.pid, SIGUSR1);   //For starting execution if not started.
+        kill(j.pid, SIGCONT); // Continue the job
+        running[shared_mem->running_count++] = j;
+    }
+
+    for (int i=0; i<shared_mem->ready_count-to_run; i++){
+        ready[i]=ready[i+to_run];
+    }
+
+    atomic_fetch_sub(&shared_mem->ready_count,to_run);
+}
+
+static void shell_signal_handler(int signum) {                        //********************************Do with write
+    if (signum == SIGINT){
+        printf("Recieved SIGINT");
+        //wait for all user processes to be executed.
+        while (shared_mem->ready_count>0 || shared_mem->running_count>0){
+            printf("All Jobs not completed yet");
+            sleep(TSLICE);
+        }
+        kill(scheduler_pid, SIGINT);
+        munmap(shared_mem, sizeof(shm_t));
+        shm_unlink("/shm_struct");
+        close(shm_fd);
+        waitpid(scheduler_pid,NULL,0);
+        exit(0);
+    }
+}
+//change.
+void scheduler_signal_handler(int signum){
+    if (signum==SIGUSR2){
+        printf("SIGUSR2 received\n");
+        char buffer[512];
+        read(pipefd[0], buffer, sizeof(buffer));
+        buffer[sizeof(buffer) - 1] = '\0';
+        Job_PCB j;
+        j.job_name=strdup(buffer);
+        if (j.job_name==NULL){
+            perror("strdup failed");
+            return;
+        }
+        j.wait_time.tv_sec=0;
+        j.wait_time.tv_nsec=0;
+        char* arguments[500];
+        char* token = strtok(buffer, " \t\n");
+        int i = 0;
+        while (token != NULL) {
+            arguments[i++] = token;
+            token = strtok(NULL, " \t\n");
+        }
+        arguments[i] = NULL;
+        int pid=fork();
+        if (pid<0){
+            perror("Fork Failed");
+        }
+        else if (pid==0){
+            char* args[]={arguments[1],NULL};
+            if (execvp(args[0], args)==-1){
+                perror("Command could not be executed");
+            }
+        }
+        else {
+            j.pid = pid;
+            j.completed=0;
+            clock_gettime(CLOCK_MONOTONIC,&j.start_time);
+            clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
+            int index=atomic_fetch_add(&shared_mem->ready_count,1);         //gives previous value of ready_count and used to handle race condition.
+            if (index>=1000){
+                perror("Ready Queue Full");
+                atomic_fetch_sub(&shared_mem->ready_count,1);
+            }
+            ready[index]=j;
+            printf("Ready[index].job_name: %s\n",ready[index].job_name);
+        }
+    }
+    else if (signum==SIGINT){
+        printf("SIGINT recieved");
+        //print the name, pid, completion time, and wait time of all the jobs submitted by the user and exit gracefully.
+        for (int i=0; i<terminated_count; i++){
+            Job_PCB j=terminated[i];
+            printf("Command: %s\n",j.job_name);
+            printf("PID: %d\n",j.pid);
+            printf("Wait time: %ld seconds, %ld nanoseconds\n", j.wait_time.tv_sec, j.wait_time.tv_nsec);
+            timespec completion={0,0};
+            completion.tv_sec+=(j.end_time.tv_sec-j.start_time.tv_sec);
+            completion.tv_nsec+=(j.end_time.tv_nsec-j.start_time.tv_nsec);
+            if (completion.tv_nsec<0){
+                completion.tv_sec--;
+                completion.tv_nsec+=1000000000;
+            }
+            printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
+            printf("\n");
+            free(j.job_name);
+        }
+        munmap(shared_mem, sizeof(shm_t));
+    }
+}
+
+void create_shared_memory(){
+    shm_unlink("/shm_struct"); //remove if anything earlier.
+    //o_creat = create if not there. o_rdwr = read and write, 0666 = wide access for owner, group and others. read and write permission mainly.
+    shm_fd = shm_open("/shm_struct", O_CREAT | O_RDWR, 0666);       //file descriptor.
     if (shm_fd == -1) {
-        perror("shm_open");
+        perror("shm_open failed");
         exit(1);
     }
-    if (ftruncate(shm_fd, sizeof(struct SharedMemory))==-1) {
-        perror("ftruncate");
+
+    // Set size of shared memory
+    if (ftruncate(shm_fd, sizeof(shm_t)) == -1) {
+        perror("ftruncate failed");
+        close(shm_fd);
         exit(1);
     }
-    shared_mem = (struct SharedMemory *)mmap(0, sizeof(struct SharedMemory), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+
+    // Map shared memory
+    shared_mem = mmap(NULL, sizeof(shm_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shared_mem == MAP_FAILED) {
-        perror("mmap");
-        exit(1);
-    }
-    shared_mem->terminating_flag=0;
-    return shared_mem;
-}
-
-// Function to create and initialize shared memory for command history
-struct SharedHistory *create_shared_history() {
-    int shm_fd;
-    struct SharedHistory *shared_history;
-    shm_fd = shm_open("/my_shared_history", O_CREAT | O_RDWR, 0666);
-    if (shm_fd == -1) {
-        perror("shm_open");
-        exit(1);
-    }
-    if (ftruncate(shm_fd, sizeof(struct SharedHistory)) == -1) {
-        perror("ftruncate");
-        exit(1);
-    }
-    shared_history = (struct SharedHistory *)mmap(0, sizeof(struct SharedHistory), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (shared_history == MAP_FAILED) {
-        perror("mmap");
+        perror("mmap failed");
+        close(shm_fd);
         exit(1);
     }
 
-    shared_history->index_pointer = 0;
-    return shared_history;
+    //Initializing
+    memset(shared_mem, 0, sizeof(shm_t));    
+    atomic_init(&shared_mem->ready_count, 0);
+    atomic_init(&shared_mem->running_count,0);
 }
-// Signal handler for the shell
-void shell_signal_handler(int signum)
-{
-    if (signum == SIGALRM)
-    {   
-        alarm_triggered = 1;
-        kill(scheduler_pid, SIGCONT);
-        pause();
-    }
-    else if(signum==SIGUSR1){
-        kill(scheduler_pid,SIGSTOP);
-        alarm(20);
-    }
-    else if(signum==SIGINT){
-        terminator();
-        //kill(scheduler_pid,SIGINT);
-        //pause();
-        //exit(EXIT_SUCCESS);
-    }
-}
-struct SharedHistory *shared_history;
-struct SharedMemory *shared_mem;
-// Calculate the wait time based on start and end times
-long int calculate_wait_time(struct timeval start_time, struct timeval end_time) {
-    long int start_time_ms = start_time.tv_sec * 1000 + start_time.tv_usec / 1000;
-    long int end_time_ms = end_time.tv_sec * 1000 + end_time.tv_usec / 1000;
-    return end_time_ms - start_time_ms ;
-}
-// Function to print the command history
-void i_will_print_history(){
-    int number_of_inputs=shared_history->index_pointer;
-    printf("%d\n",number_of_inputs);
-    printf("---------------History---------------\n");
-    for(int i=0;i<number_of_inputs;i++){
-        if(shared_history->array[i].flag==-1){
-            //valid hi nhi h
-            continue;
-        }
-        printf("--------------------\n");
-        printf("Name of Job :%s\n",shared_history->array[i].my_name);
-        printf("PID: %d\n",shared_history->array[i].my_pid);
-        printf("Execution Time: %ld ms\n",shared_history->array[i].execution_time);
-        long int wait_time = calculate_wait_time(shared_history->array[i].start_time,shared_history->array[i].end_time) - shared_history->array->execution_time;
-        printf("Wait Time : %ld ms\n",wait_time);
-        printf("--------------------\n");
-    }
-}
-// Function to terminate the shell
-void terminator(){
-    start_loop=false;
-    shared_mem->terminating_flag=1;
-    i_will_print_history();
-    kill(scheduler_pid,SIGCONT);
-    usleep(10);
-    kill(scheduler_pid,SIGTERM);
-    //sleep(5);
-    munmap(shared_mem, sizeof(struct SharedMemory));
-    shm_unlink("/my_shared_memory");
-    munmap(shared_history,sizeof(struct SharedHistory));
-    shm_unlink("/my_shared_history");
-    exit(0);
-}
-//main fucn here
-int main(int argc, char **argv)
-{
-    if (argc != 3)
-    {
-        printf("Provide all arguments!!!!!\n");
+
+int main(int argc, char* argv[]){
+    if (pipe(pipefd) == -1) {
+        perror("pipe failed");
         exit(1);
     }
-    struct sigaction signal;
-    signal.sa_handler = shell_signal_handler; 
-    sigaction(SIGALRM, &signal, NULL);
-    sigaction(SIGUSR1,&signal,NULL);
-    sigaction(SIGINT,&signal,NULL);
-    int num_of_cpu = atoi(argv[1]);
-    int time_slice = atoi(argv[2]);
+    //error handling if ncpu or tslice not provided
+    if (argc != 3){
+        perror("insufficient command line arguments provided");
+        exit(1);
+    }
+
+    //error checking if ncpu or tslice is not number
+    // if (!is_numeric(argv[1] || !is_numeric(argv[2]){
+    //     perror("ncpu and tslice must be positive numbers");
+    //     exit(1);
+    // }
+
+    // ncpu and tslice cannot have leading + as well (can have whitespace leading)
+    NCPU = atoi(argv[1]);
+    TSLICE = strtof(argv[2],NULL);
+
+    if (NCPU<=0 || TSLICE<=0.0){
+        perror("invalid ncpu or tslice values");
+        exit(1);
+    }
+
+    create_shared_memory();
+    printf("created shared memory");
+
     scheduler_pid = fork();
-    if (scheduler_pid == 0)
-    {
-        execlp("./scheduler", "./scheduler", argv[1], argv[2], NULL);
-        printf("Failed to start!!!!!\n");
+    if (scheduler_pid < 0){
+        perror("fork failed!");
         exit(1);
     }
-    else if (scheduler_pid < 0)
-    {
-        printf("\nFailed to start!!!!!\n");
+    else if (scheduler_pid == 0){
+        struct sigaction ssh;
+        memset(&ssh, 0, sizeof(ssh));
+        ssh.sa_handler = scheduler_signal_handler;
+        sigaction(SIGUSR2, &ssh, NULL);
+        sigaction(SIGINT, &ssh, NULL);
+        printf("TSLICE: %f", TSLICE);
+        fflush(stdout);
+        while (1){
+            unsigned int sleep_time=TSLICE;
+            while (sleep_time>0){
+                sleep_time=usleep(sleep_time);       //if signal comes the sleep will continue.
+            }
+            context_switch();
+        }
         exit(1);
     }
-    sleep(2);
-    kill(scheduler_pid, SIGSTOP);
-    start_loop = true;
-    char input[2000];
-    char *command[2000];
-    alarm(20);
-    shared_mem = create_shared_memory();
-    shared_history = create_shared_history();
-    shared_mem->index=0;
-    printf("\nWelcome to Shell .....\n\n");
-    while (start_loop)
-    {
-        if (alarm_triggered == 1)
-        {   
-            for(int i=0;i<shared_mem->index;i++){
-                strcpy(shared_mem->strings[i],"");
-            }
-            shared_mem->index=0;
-            alarm_triggered = 0;
-            while (getchar() != '\n');
-            continue;
-        }
-        printf("\n");
-        printf(">> : ");
-        if (fgets(input, sizeof(input), stdin) != NULL)
-        {
-            size_t input_length = strlen(input);
-            if (input_length > 0 && input[input_length - 1] == '\n')
-            {
-                input[input_length - 1] = '\0';
-            }
-            char *command[2000];
-            char *token = strtok(input, " ");
-            // Split by spaces and newline characters
-            int count = 0;
-            while (token != NULL)
-            {
-                command[count++] = token;
-                token = strtok(NULL, " \n");
-            }
-            int ind=shared_mem->index;
-            strcpy(shared_mem->strings[ind],command[1]);
-            
-            shared_mem->index++;
-            if(strcmp(input,"exit")==0){
-                terminator();
-            }
-        }
-    }
-    munmap(shared_mem, sizeof(struct SharedMemory));
-    shm_unlink("/my_shared_memory");
+    struct sigaction sig;
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = shell_signal_handler;
+    sigaction(SIGINT, &sig, NULL);
+    shell_loop();
+    return 0;
 }
