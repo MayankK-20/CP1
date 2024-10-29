@@ -51,6 +51,9 @@ int launch2(char** args, int bg){
         if (args[2]!=NULL){
             shared_mem->new_job.priority = atoi(args[2]);
         }
+        else{
+            shared_mem->new_job.priority=1;
+        }
         printf("Sending SIGUSR2");
         kill(scheduler_pid, SIGUSR2);
         return 1;
@@ -278,7 +281,7 @@ static void shell_signal_handler(int signum) {                        //********
 
 void scheduler_signal_handler(int signum){
     if (signum==SIGUSR2){
-        printf("SIGTERM received\n");
+        printf("SIGUSR2 received\n");
         Job_PCB j;
         j.job_name=strdup(shared_mem->new_job.job_name);
         j.wait_time.tv_sec=0;
@@ -341,6 +344,8 @@ void create_shared_memory(){
     atomic_init(&shared_mem->ready_count, 0);
     shared_mem->running_count=0;
     shared_mem->terminated_count=0;
+    shared_mem->new_job.job_name=NULL;
+    shared_mem->new_job.priority=1;
 }
 
 int main(int argc, char* argv[]){
