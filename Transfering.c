@@ -100,7 +100,7 @@ Queue terminated_queue;
 int ready_count=0;
 int running_count=0;
 int pipefd[2];
-volatile sigint_received=0;
+volatile int sigint_received=0;
 
 void context_switch(){
     //code for the running and ready queue thing.
@@ -146,7 +146,19 @@ void context_switch(){
                 j->wait_time.tv_sec--;
                 j->wait_time.tv_nsec+=1000000000;
             }
-            enqueue(terminated_queue,j);
+            printf("Command: %s\n",j->job_name);
+            printf("PID: %d\n",j->pid);
+            printf("Wait time: %ld seconds, %ld nanoseconds\n", j->wait_time.tv_sec, j->wait_time.tv_nsec);
+            timespec completion={0,0};
+            completion.tv_sec+=(j->end_time.tv_sec-j->start_time.tv_sec);
+            completion.tv_nsec+=(j->end_time.tv_nsec-j->start_time.tv_nsec);
+            if (completion.tv_nsec<0){
+                completion.tv_sec--;
+                completion.tv_nsec+=1000000000;
+            }
+            printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
+            printf("\n");
+            enqueue(&terminated_queue,j);
             terminated_count++;
         }
     }
@@ -216,7 +228,6 @@ void scheduler_signal_handler(int signum){
         printf("SIGINT recieved Scheduler");
         //print the name, pid, completion time, and wait time of all the jobs submitted by the user and exit gracefully.
         sigint_received=1;
-        exit(0);
     }
 }
 
