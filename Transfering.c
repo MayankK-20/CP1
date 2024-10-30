@@ -91,16 +91,16 @@ int size(Queue *q){
     return q->size;
 }
 
-Job_PCB terminated[1000];
 int terminated_count=0;
 int NCPU;
 float TSLICE;
 Queue running_queue;
 Queue ready_queue;
+Queue terminated_queue;
 int ready_count=0;
 int running_count=0;
 int pipefd[2];
-
+volatile sigint_received=0;
 
 void context_switch(){
     //code for the running and ready queue thing.
@@ -146,11 +146,8 @@ void context_switch(){
                 j->wait_time.tv_sec--;
                 j->wait_time.tv_nsec+=1000000000;
             }
-            if (terminated_count>=1000){
-                perror("Memory assigned for terminated processes full");
-                continue;
-            }
-            terminated[terminated_count++]=*j;
+            enqueue(terminated_queue,j);
+            terminated_count++;
         }
     }
 
@@ -191,7 +188,6 @@ void context_switch(){
         }
         enqueue(&running_queue, j);
         running_count++;
-        kill(j->pid, SIGUSR1);   //For starting execution if not started.
         kill(j->pid, SIGCONT); 
     }
 }
@@ -201,7 +197,7 @@ void scheduler_signal_handler(int signum){
         printf("SIGUSR2 received\n");
         char buffer[512];
         read(pipefd[0], buffer, sizeof(buffer));
-        printf("buffer: %s\n",buffer);
+        //printf("buffer: %s\n",buffer);
         buffer[sizeof(buffer) - 1] = '\0';
         Job_PCB j;
         j.job_name=strdup(buffer);
@@ -214,27 +210,13 @@ void scheduler_signal_handler(int signum){
         j.completed=-1;         
         enqueue(&ready_queue, &j);
         ready_count++;
-        printf("Ready[index].job_name: %s\n",j.job_name);
+        //printf("Ready[index].job_name: %s\n",j.job_name);
     }
     else if (signum==SIGINT){
         printf("SIGINT recieved Scheduler");
         //print the name, pid, completion time, and wait time of all the jobs submitted by the user and exit gracefully.
-        for (int i=0; i<terminated_count; i++){
-            Job_PCB j=terminated[i];
-            printf("Command: %s\n",j.job_name);
-            printf("PID: %d\n",j.pid);
-            printf("Wait time: %ld seconds, %ld nanoseconds\n", j.wait_time.tv_sec, j.wait_time.tv_nsec);
-            timespec completion={0,0};
-            completion.tv_sec+=(j.end_time.tv_sec-j.start_time.tv_sec);
-            completion.tv_nsec+=(j.end_time.tv_nsec-j.start_time.tv_nsec);
-            if (completion.tv_nsec<0){
-                completion.tv_sec--;
-                completion.tv_nsec+=1000000000;
-            }
-            printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
-            printf("\n");
-            free(j.job_name);
-        }
+        sigint_received=1;
+        exit(0);
     }
 }
 
@@ -253,13 +235,28 @@ int main(int argc, char* argv[]){
     pipefd[0]=atoi(argv[3]);
     pipefd[1]=atoi(argv[4]);
 
-    while (1){
+    while ((ready_count>0) || (running_count>0) || !sigint_received){
         unsigned int sleep_time=TSLICE;
         while (sleep_time>0){
             sleep_time=usleep(sleep_time);       //if signal comes the sleep will continue.
         }
         context_switch();
     }
+    for (int i=0; i<terminated_count; i++){
+        Job_PCB* j=dequeue(&terminated_queue);
+        printf("Command: %s\n",j->job_name);
+        printf("PID: %d\n",j->pid);
+        printf("Wait time: %ld seconds, %ld nanoseconds\n", j->wait_time.tv_sec, j->wait_time.tv_nsec);
+        timespec completion={0,0};
+        completion.tv_sec+=(j->end_time.tv_sec-j->start_time.tv_sec);
+        completion.tv_nsec+=(j->end_time.tv_nsec-j->start_time.tv_nsec);
+        if (completion.tv_nsec<0){
+            completion.tv_sec--;
+            completion.tv_nsec+=1000000000;
+        }
+        printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
+        printf("\n");
+        free(j->job_name);
+    }
     exit(1);
-
 }
