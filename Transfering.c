@@ -108,9 +108,6 @@ void context_switch(){
     if (ready_count==0 && running_count==0){        //if no processes have arrived or running.
         return;
     }//fetch load
-    display(&ready_queue);
-    display(&running_queue);
-    display(&terminated_queue);
     int status;
     int rc = running_count;
     for (int i = 0; i < rc; i++){
@@ -205,6 +202,12 @@ void context_switch(){
         running_count++;
         kill(j->pid, SIGCONT); 
     }
+    printf("Ready ");
+    display(&ready_queue);
+    printf("Running ");
+    display(&running_queue);
+    printf("Terminated ");
+    display(&terminated_queue);
 }
 
 void scheduler_signal_handler(int signum){
@@ -278,10 +281,8 @@ int main(int argc, char* argv[]){
             add_to_ready(buffer);
         }
         context_switch();
-        float sleep_time=TSLICE*1000;
-        while (sleep_time>0){
-            usleep(TSLICE);
-        }
+        float sleep_time=TSLICE/1000;
+        sleep(sleep_time);
     }
     for (int i=0; i<terminated_count; i++){
         Job_PCB* j=dequeue(&terminated_queue);
@@ -299,5 +300,5 @@ int main(int argc, char* argv[]){
         printf("\n");
         free(j->job_name);
     }
-    exit(1);
+    exit(0);
 }
