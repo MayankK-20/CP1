@@ -240,7 +240,10 @@ void add_to_ready(char* whole_command){
             perror("Failed to allocate memory for new Job_PCB");
             exit(1);
         }
-        new_job->job_name=arguments[1];
+        new_job->job_name=strdup(arguments[1]);
+        if (new_job->job_name==NULL){
+            perror("strdup failed");
+        }
         clock_gettime(CLOCK_MONOTONIC,&new_job->start_time);
         clock_gettime(CLOCK_MONOTONIC,&new_job->prev_time);
         new_job->completed=-1;         
@@ -307,6 +310,8 @@ int main(int argc, char* argv[]){
         }
         printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
         printf("\n");
+        free(j->job_name);
+        free(j);
     }
     exit(0);
 }
