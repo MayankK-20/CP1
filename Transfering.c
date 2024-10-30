@@ -9,6 +9,8 @@
 #include<fcntl.h>       //shm_open and ftruncate
 #include<signal.h>
 #include<errno.h>
+#include <semaphore.h>
+#define PIPE_SEMAPHORE_NAME "/pipe_semaphore"
 
 typedef struct timespec timespec;
 
@@ -112,6 +114,7 @@ Queue terminated_queue;
 
 int pipefd[2];
 volatile int sigint_received=0;
+sem_t* pipe_semaphore;  
 
 void context_switch(){
     //code for the running and ready queue thing.
@@ -364,6 +367,11 @@ int main(int argc, char* argv[]){
     pipefd[0]=atoi(argv[3]);
     pipefd[1]=atoi(argv[4]);
     set_nonblocking(pipefd[0]);
+    pipe_semaphore = sem_open(PIPE_SEMAPHORE_NAME, 0);
+    if (pipe_semaphore == SEM_FAILED) {
+        perror("sem_open failed in child");
+        exit(1);
+    }
 
     queue(&running_queue);
     queue(&ready_queue_1);
@@ -374,7 +382,9 @@ int main(int argc, char* argv[]){
 
     while ((ready_1_count>0 + ready_2_count + ready_3_count + ready_4_count) || (running_count>0) || !sigint_received){
         char buffer[512];
+        sem_wait(&pipe_semaphore);
         ssize_t b_read = read(pipefd[0], buffer, sizeof(buffer));
+        sem_post(&pipe_semaphore);
         //printf("buffer: %s\n",buffer);
         if (b_read ==-1 && (errno == EAGAIN || errno==EWOULDBLOCK)){}
         else if (b_read==-1){
@@ -414,5 +424,6 @@ int main(int argc, char* argv[]){
         free(j->job_name);
         free(j);
     }
+    sem_close(pipe_semaphore);
     exit(0);
 }
