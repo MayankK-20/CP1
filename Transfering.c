@@ -73,19 +73,19 @@ Job_PCB* dequeue(Queue *q) {
     return temp;
 }
 
-// void display(Queue *q) {
-//     if (empty(q)) {
-//         printf("EMPTY\n");
-//         return;
-//     }
-//     Job_PCB* temp = q->front;
-//     printf("QUEUE --> ");
-//     while (temp != NULL) {
-//         printf(" %d ->", temp->pid);
-//         temp = temp->next;
-//     }
-//     printf("\n");
-// }
+void display(Queue *q) {
+    if (empty(q)) {
+        printf("EMPTY\n");
+        return;
+    }
+    Job_PCB* temp = q->front;
+    printf("QUEUE --> ");
+    while (temp != NULL) {
+        printf(" %d ->", temp->pid);
+        temp = temp->next;
+    }
+    printf("\n");
+}
 
 int size(Queue *q){
     return q->size;
@@ -107,6 +107,9 @@ void context_switch(){
     if (ready_count==0 && running_count==0){        //if no processes have arrived or running.
         return;
     }//fetch load
+    display(&ready_queue);
+    display(&running_queue);
+    display(&terminated_queue);
     int status;
     int rc = running_count;
     for (int i = 0; i < rc; i++){
