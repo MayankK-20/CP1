@@ -212,8 +212,6 @@ void context_switch(){
 
 void scheduler_signal_handler(int signum){
     if (signum==SIGINT){
-        //printf("SIGINT recieved Scheduler");
-        //print the name, pid, completion time, and wait time of all the jobs submitted by the user and exit gracefully.
         sigint_received=1;
     }
 }
@@ -238,6 +236,10 @@ void add_to_ready(char* whole_command){
         }
         arguments[i] = NULL;
         Job_PCB* new_job = malloc(sizeof(Job_PCB));
+        if (new_job == NULL) {
+            perror("Failed to allocate memory for new Job_PCB");
+            exit(1);
+        }
         new_job->job_name=arguments[1];
         clock_gettime(CLOCK_MONOTONIC,&new_job->start_time);
         clock_gettime(CLOCK_MONOTONIC,&new_job->prev_time);
@@ -249,12 +251,19 @@ void add_to_ready(char* whole_command){
 
 void set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);  // Get current flags
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);  // Set non-blocking mode
+    if (flags == -1) {
+        perror("fcntl failed");
+        exit(1);
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("failed to set non-blocking mode for pipe");
+        exit(1);
+    }
 }
 
 int main(int argc, char* argv[]){
 
-     struct sigaction ssh;
+    struct sigaction ssh;
     memset(&ssh, 0, sizeof(ssh));
     ssh.sa_handler = scheduler_signal_handler;
     sigaction(SIGINT, &ssh, NULL);
@@ -298,7 +307,6 @@ int main(int argc, char* argv[]){
         }
         printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
         printf("\n");
-        free(j->job_name);
     }
     exit(0);
 }
