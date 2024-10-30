@@ -8,6 +8,7 @@
 #include<stdatomic.h>
 #include<fcntl.h>       //shm_open and ftruncate
 #include<signal.h>
+#include<errno.h>
 
 typedef struct timespec timespec;
 
@@ -119,36 +120,35 @@ void context_switch(){
         if (result == 0){
             kill(j->pid, SIGSTOP);
             //wait time.
-            timespec cur_time;
-            clock_gettime(CLOCK_MONOTONIC, &cur_time);
-            j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
-            j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
-            if (j->wait_time.tv_nsec<0){
-                j->wait_time.tv_sec--;
-                j->wait_time.tv_nsec+=1000000000;
-            }
+            // timespec cur_time;
+            // clock_gettime(CLOCK_MONOTONIC, &cur_time);
+            // j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
+            // j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
+            // if (j->wait_time.tv_nsec<0){
+            //     j->wait_time.tv_sec--;
+            //     j->wait_time.tv_nsec+=1000000000;
+            // }
+            clock_gettime(CLOCK_MONOTONIC,&j->prev_time);
             enqueue(&ready_queue,j);
             ready_count++;
         }
         else if (result == -1){
-                    // printf("completed %d\n", p->completed);
-                    if (j->completed != 1){
-                        j->completed = 1;
-                        // printf("%d %s equeued 3\n", p->pid,p->command[0]);
-                        enqueue(&ready_queue,j);
-                        ready_count++;
-                    }
+            if (j->completed != 1){
+                j->completed = 1;
+                enqueue(&ready_queue,j);
+                ready_count++;
+            }
         }
         else{
             clock_gettime(CLOCK_MONOTONIC,&j->end_time);
-            timespec cur_time;
-            clock_gettime(CLOCK_MONOTONIC, &cur_time);
-            j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
-            j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
-            if (j->wait_time.tv_nsec<0){
-                j->wait_time.tv_sec--;
-                j->wait_time.tv_nsec+=1000000000;
-            }
+            // timespec cur_time;
+            // clock_gettime(CLOCK_MONOTONIC, &cur_time);
+            // j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
+            // j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
+            // if (j->wait_time.tv_nsec<0){
+            //     j->wait_time.tv_sec--;
+            //     j->wait_time.tv_nsec+=1000000000;
+            // }
             printf("Command: %s\n",j->job_name);
             printf("PID: %d\n",j->pid);
             printf("Wait time: %ld seconds, %ld nanoseconds\n", j->wait_time.tv_sec, j->wait_time.tv_nsec);
@@ -181,15 +181,7 @@ void context_switch(){
                 if (buffer==NULL){
                     perror("strdup in context switch failed");
                 }
-                char* arguments[500];
-                char* token = strtok(buffer, " \t\n");
-                int i = 0;
-                while (token != NULL) {
-                    arguments[i++] = token;
-                    token = strtok(NULL, " \t\n");
-                }
-                arguments[i] = NULL;
-                char* args[]={arguments[1],NULL};
+                char* args[]={buffer,NULL};
                 execvp(args[0], args);
                 perror("Execvp in context switch");
                 exit(0);
@@ -201,6 +193,14 @@ void context_switch(){
                 j->wait_time.tv_nsec=0;
             }
         }
+        timespec cur_time;
+        clock_gettime(CLOCK_MONOTONIC, &cur_time);
+        j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
+        j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
+        if (j->wait_time.tv_nsec<0){
+            j->wait_time.tv_sec--;
+            j->wait_time.tv_nsec+=1000000000;
+        }
         enqueue(&running_queue, j);
         running_count++;
         kill(j->pid, SIGCONT); 
@@ -208,30 +208,45 @@ void context_switch(){
 }
 
 void scheduler_signal_handler(int signum){
-    if (signum==SIGUSR2){
-        printf("SIGUSR2 received\n");
-        char buffer[512];
-        read(pipefd[0], buffer, sizeof(buffer));
-        //printf("buffer: %s\n",buffer);
-        buffer[sizeof(buffer) - 1] = '\0';
-        Job_PCB j;
-        j.job_name=strdup(buffer);
-        if (j.job_name==NULL){
-            perror("strdup failed");
-            return;
-        }
-        clock_gettime(CLOCK_MONOTONIC,&j.start_time);
-        clock_gettime(CLOCK_MONOTONIC,&j.prev_time);
-        j.completed=-1;         
-        enqueue(&ready_queue, &j);
-        ready_count++;
-        //printf("Ready[index].job_name: %s\n",j.job_name);
-    }
-    else if (signum==SIGINT){
-        printf("SIGINT recieved Scheduler");
+    if (signum==SIGINT){
+        //printf("SIGINT recieved Scheduler");
         //print the name, pid, completion time, and wait time of all the jobs submitted by the user and exit gracefully.
         sigint_received=1;
     }
+}
+
+void add_to_ready(char* whole_command){
+    char* command = strtok(whole_command, "\n");
+    char* commands[500];
+    int num_commands = 0;
+
+    while (command != NULL) {
+        commands[num_commands++] = command;
+        command = strtok(NULL, "\n");
+    }
+
+    for (int j=0; j<num_commands; j++){
+        char* arguments[500];
+        char* token = strtok(commands[j], " \t");                                                            //flag for background command &
+        int i = 0;
+        while (token != NULL) {
+            arguments[i++] = token;
+            token = strtok(NULL, " \t");
+        }
+        arguments[i] = NULL;
+        Job_PCB* new_job = malloc(sizeof(Job_PCB));
+        new_job->job_name=arguments[1];
+        clock_gettime(CLOCK_MONOTONIC,&new_job->start_time);
+        clock_gettime(CLOCK_MONOTONIC,&new_job->prev_time);
+        new_job->completed=-1;         
+        enqueue(&ready_queue, &new_job);
+        ready_count++;
+    }
+}
+
+void set_nonblocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);  // Get current flags
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);  // Set non-blocking mode
 }
 
 int main(int argc, char* argv[]){
@@ -239,7 +254,6 @@ int main(int argc, char* argv[]){
      struct sigaction ssh;
     memset(&ssh, 0, sizeof(ssh));
     ssh.sa_handler = scheduler_signal_handler;
-    sigaction(SIGUSR2, &ssh, NULL);
     sigaction(SIGINT, &ssh, NULL);
     sigemptyset(&ssh.sa_mask); 
     ssh.sa_flags = 0;
@@ -248,13 +262,23 @@ int main(int argc, char* argv[]){
     TSLICE = strtof(argv[2],NULL);
     pipefd[0]=atoi(argv[3]);
     pipefd[1]=atoi(argv[4]);
+    set_nonblocking(pipefd[0]);
 
     while ((ready_count>0) || (running_count>0) || !sigint_received){
-        unsigned int sleep_time=TSLICE;
-        while (sleep_time>0){
-            sleep_time=usleep(sleep_time);       //if signal comes the sleep will continue.
+        char buffer[512];
+        ssize_t b_read = read(pipefd[0], buffer, sizeof(buffer));
+        //printf("buffer: %s\n",buffer);
+        if (b_read ==-1 && (errno == EAGAIN || errno==EWOULDBLOCK)){}
+        else if (b_read==-1){
+            perror("Error in read");
+            exit(1);
+        }
+        else{
+            buffer[sizeof(buffer) - 1] = '\0';
+            add_to_ready(buffer);
         }
         context_switch();
+        sleep(TSLICE);       //if signal comes the sleep will continue.
     }
     for (int i=0; i<terminated_count; i++){
         Job_PCB* j=dequeue(&terminated_queue);
