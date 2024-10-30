@@ -8,422 +8,142 @@
 #include<stdatomic.h>
 #include<fcntl.h>       //shm_open and ftruncate
 #include<signal.h>
-#include<errno.h>
 #include <semaphore.h>
 #define PIPE_SEMAPHORE_NAME "/pipe_semaphore"
 
-typedef struct timespec timespec;
-
-
-/// QUEUE
-
-
-typedef struct Job_PCB{
-    pid_t pid;
-    char* job_name;
-    timespec wait_time;
-    timespec start_time;
-    timespec end_time;
-    timespec prev_time;
-    int priority;
-    int completed;
-    struct Job_PCB* next;
-    //completion time = end_time - start_time
-} Job_PCB;
-
-
-typedef struct Queue{
-    Job_PCB *front;
-    Job_PCB *back;
-    int size;
-} Queue;
-
-void queue(Queue *q) {
-    q->front = NULL;
-    q->back = NULL;
-    q->size = 0;
-}
-
-int empty(Queue *q) {
-    return q->front == NULL;
-}
-
-void enqueue(Queue* q, Job_PCB* p) {
-    //clock_gettime(CLOCK_REALTIME, &p->eq_time);
-    p->next = NULL;
-    if (empty(q)) {
-        q->front = p;
-        q->back = p;
-    } else {
-        q->back->next = p;
-        q->back = p;
-    }
-    q->size++;
-}
-
-Job_PCB* dequeue(Queue *q) {
-    if (empty(q)) {
-        printf("QUEUE IS EMPTY\n");
-        return NULL;
-    }
-    Job_PCB* temp = q->front;
-    q->front = q->front->next;
-    if (q->front == NULL) {
-        q->back = NULL;
-    }
-    temp->next = NULL;
-    q->size--;
-    return temp;
-}
-
-void display(Queue *q) {
-    if (empty(q)) {
-        printf("EMPTY\n");
-        return;
-    }
-    Job_PCB* temp = q->front;
-    printf("QUEUE --> ");
-    while (temp != NULL) {
-        printf(" %d ->", temp->pid);
-        temp = temp->next;
-    }
-    printf("\n");
-}
-
-int size(Queue *q){
-    return q->size;
-}
-
-int terminated_count=0;
-int NCPU;
-float TSLICE;
-
-Queue ready_queue_1;
-Queue ready_queue_2;
-Queue ready_queue_3;
-Queue ready_queue_4;
-
-int ready_1_count=0;
-int ready_2_count=0;
-int ready_3_count=0;
-int ready_4_count=0;
-
-Queue running_queue;
-int running_count=0;
-Queue terminated_queue;
-
+pid_t scheduler_pid;
 int pipefd[2];
-volatile int sigint_received=0;
-sem_t* pipe_semaphore;  
+sem_t* pipe_semaphore;
 
-void context_switch(){
-    //code for the running and ready queue thing.
-    int ready_count = ready_1_count + ready_2_count + ready_3_count + ready_4_count;
-    if (ready_count==0 && running_count==0){        //if no processes have arrived or running.
-        return;
+
+int launch(char* command){
+    if (strcmp(command,"\n")==0 ||command==NULL || strlen(command)==0){
+        return 1;
     }
-    int status;
-    int rc = running_count;
-    for (int i = 0; i < rc; i++){
-        Job_PCB* j = dequeue(&running_queue);
-        running_count--;
-        int result=waitpid(j->pid, &status, WNOHANG);
-        if (result == 0){
-            kill(j->pid, SIGSTOP);
-            clock_gettime(CLOCK_MONOTONIC,&j->prev_time);
-            switch(j->priority){
-                case 1:
-                    enqueue(&ready_queue_1, j);
-                    ready_1_count++;
-                    break;
-                case 2:
-                    enqueue(&ready_queue_2, j);
-                    ready_2_count++;
-                    break;
-                case 3:
-                    enqueue(&ready_queue_3, j);
-                    ready_3_count++;
-                    break;
-                case 4:
-                    enqueue(&ready_queue_4, j);
-                    ready_4_count++;
-                    break;
-            }
-        }
-        else if (result == -1){
-            if (j->completed != 1){
-                j->completed = 1;
-                switch(j->priority){
-                    case 1:
-                        enqueue(&ready_queue_1, j);
-                        ready_1_count++;
-                        break;
-                    case 2:
-                        enqueue(&ready_queue_2, j);
-                        ready_2_count++;
-                        break;
-                    case 3:
-                        enqueue(&ready_queue_3, j);
-                        ready_3_count++;
-                        break;
-                    case 4:
-                        enqueue(&ready_queue_4, j);
-                        ready_4_count++;
-                        break;
-                }
-            }
-        }
-        else{
-            if (WIFEXITED(status) && WEXITSTATUS(status)==10) {
-                    j->completed = 10;
-                    enqueue(&terminated_queue, j);
-                    terminated_count++;
-                    printf("Execution failed for command : ");
-                    printf(j->job_name);
-                    printf("\n");
-            }
-            else{
-                clock_gettime(CLOCK_MONOTONIC,&j->end_time);
-                printf("Command: %s\n",j->job_name);
-                printf("PID: %d\n",j->pid);
-                printf("Wait time: %ld seconds, %ld nanoseconds\n", j->wait_time.tv_sec, j->wait_time.tv_nsec);
-                timespec completion={0,0};
-                completion.tv_sec+=(j->end_time.tv_sec-j->start_time.tv_sec);
-                completion.tv_nsec+=(j->end_time.tv_nsec-j->start_time.tv_nsec);
-                if (completion.tv_nsec<0){
-                    completion.tv_sec--;
-                    completion.tv_nsec+=1000000000;
-                }
-                printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
-                printf("\n");
-                enqueue(&terminated_queue,j);
-                terminated_count++;
-            }    
+    char* comm = strdup(command);
+    if (comm==NULL){
+        perror("strdup failed");
+        return 1;
+    }
+    char* arguments[500];
+    char* token = strtok(command, " \t\n");                                                              //flag for background command &
+    int i = 0;
+    while (token != NULL) {
+        arguments[i++] = token;
+        token = strtok(NULL, " \t\n");
+    }
+    arguments[i] = NULL;
+    if (strcmp(arguments[0],"submit")==0){
+        sem_wait(&pipe_semaphore);
+        write(pipefd[1], comm, strlen(comm) + 1); //writing to pipe if command starts with submit.
+        sem_post(&pipe_semaphore);
+        free(comm);
+        return 1;
+    }
+    free(comm);
+
+    //if command not submit it will execute as usual.
+    int pid=fork();
+    if (pid<0){
+        perror("Fork Failed");
+    }
+    else if (pid==0){
+        if (execvp(arguments[0], arguments)==-1){
+            //execvp searches for executable replaces it with the child process if succesfull it will never return else return -1;
+            perror("Command could not be executed");
+            return 1;
         }
     }
-
-    int rdc = ready_1_count + ready_2_count + ready_3_count + ready_4_count;
-    for (int i=0; (i < NCPU && i < rdc); i++){
-        Job_PCB* j;
-        if (ready_1_count > 0){
-            j = dequeue(&ready_queue_1);
-            ready_1_count--;
-        }
-        else if (ready_2_count > 0){
-            j = dequeue(&ready_queue_2);
-            ready_2_count--;
-        }
-        else if (ready_3_count > 0){
-            j = dequeue(&ready_queue_3);
-            ready_3_count--;
-        }
-        else if (ready_4_count > 0){
-            j = dequeue(&ready_queue_4);
-            ready_4_count--;
-        }
-        else{
-            break;
-        }
-
-        if (j->completed==-1){
-            pid_t pid=fork();
-            if (pid<0){
-                perror("fork in context switch failed");
-                exit(1);
-            }
-            else if(pid==0){
-                char* buffer=strdup(j->job_name);
-                if (buffer==NULL){
-                    perror("strdup in context switch failed");
-                }
-                char* args[]={buffer,NULL};
-                execvp(args[0], args);
-                perror("Execvp in context switch");
-                exit(10);
-            }
-            else{
-                j->completed=0;
-                j->pid=pid;
-                j->wait_time.tv_sec=0;
-                j->wait_time.tv_nsec=0;
-            }
-        }
-        timespec cur_time;
-        clock_gettime(CLOCK_MONOTONIC, &cur_time);
-        j->wait_time.tv_sec+=(cur_time.tv_sec-j->prev_time.tv_sec);
-        j->wait_time.tv_nsec+=(cur_time.tv_nsec-j->prev_time.tv_nsec);
-        if (j->wait_time.tv_nsec<0){
-            j->wait_time.tv_sec--;
-            j->wait_time.tv_nsec+=1000000000;
-        }
-        enqueue(&running_queue, j);
-        running_count++;
-        kill(j->pid, SIGCONT); 
-
+    else{
+        waitpid(pid,NULL,0);
     }
-    // printf("Ready ");
-    // display(&ready_queue);
-    // printf("Running ");
-    // display(&running_queue);
-    // printf("Terminated ");
-    // display(&terminated_queue);
+    return 1;
 }
 
-void scheduler_signal_handler(int signum){
-    if (signum==SIGINT){
-        sigint_received=1;
-    }
+char* read_user_input(){
+    char* command=NULL;                             //Where the command would be stored.
+    size_t commandSize=0;                           //Size allocated for command, getline can change it.
+    getline(&command, &commandSize, stdin);         //reads from stdin.
+    return command;
 }
 
-void add_to_ready(char* whole_command){
-    char* command = strtok(whole_command, "\n");
-    char* commands[500];
-    int num_commands = 0;
-
-    while (command != NULL) {
-        commands[num_commands++] = command;
-        command = strtok(NULL, "\n");
-    }
-
-    for (int j=0; j<num_commands; j++){
-        char* arguments[500];
-        char* token = strtok(commands[j], " \t");
-        int i = 0;
-        while (token != NULL) {
-            arguments[i++] = token;
-            token = strtok(NULL, " \t");
-        }
-        arguments[i] = NULL;
-        Job_PCB* new_job = malloc(sizeof(Job_PCB));
-        if (new_job == NULL) {
-            perror("Failed to allocate memory for new Job_PCB");
-            exit(1);
-        }
-        new_job->job_name=strdup(arguments[1]);
-        if (i==2){
-            new_job->priority = 1;
-        }
-        else{
-            int p = atoi(arguments[2]);
-            if (p <= 0 || p >= 5){
-                printf("Invalid priority. Default priority = 1 taken");
-                new_job->priority = 1;
-            }
-            else{
-                new_job->priority = p;
-            }
-        }
-        if (new_job->job_name==NULL){
-            perror("strdup failed");
-        }
-        clock_gettime(CLOCK_MONOTONIC,&new_job->start_time);
-        clock_gettime(CLOCK_MONOTONIC,&new_job->prev_time);
-        new_job->completed=-1;
-        switch(new_job->priority){
-            case 1:
-                enqueue(&ready_queue_1, new_job);
-                ready_1_count++;
-                break;
-            case 2:
-                enqueue(&ready_queue_2, new_job);
-                ready_2_count++;
-                break;
-            case 3:
-                enqueue(&ready_queue_3, new_job);
-                ready_3_count++;
-                break;
-            case 4:
-                enqueue(&ready_queue_4, new_job);
-                ready_4_count++;
-                break;
-        }
-
-    }
+void shell_loop(){
+  int status;
+  do{
+    printf("shell: ");
+    char* command = read_user_input();
+    status = launch(command);
+    free(command);
+  } while (status);
 }
 
-void set_nonblocking(int fd) {
-    int flags = fcntl(fd, F_GETFL, 0);  // Get current flags
-    if (flags == -1) {
-        perror("fcntl failed");
-        exit(1);
-    }
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-        perror("failed to set non-blocking mode for pipe");
-        exit(1);
+static void shell_signal_handler(int signum) {
+    if (signum == SIGINT){
+        //printf("Recieved SIGINT Shell");
+        waitpid(scheduler_pid,NULL,0);
+        sem_close(pipe_semaphore);
+        sem_unlink(PIPE_SEMAPHORE_NAME);
+        exit(0);
     }
 }
 
 int main(int argc, char* argv[]){
-
-    struct sigaction ssh;
-    memset(&ssh, 0, sizeof(ssh));
-    ssh.sa_handler = scheduler_signal_handler;
-    sigaction(SIGINT, &ssh, NULL);
-    sigemptyset(&ssh.sa_mask); 
-    ssh.sa_flags = 0;
-
-    NCPU = atoi(argv[1]);
-    TSLICE = strtof(argv[2],NULL);
-    pipefd[0]=atoi(argv[3]);
-    pipefd[1]=atoi(argv[4]);
-    set_nonblocking(pipefd[0]);
-    pipe_semaphore = sem_open(PIPE_SEMAPHORE_NAME, 0);
-    if (pipe_semaphore == SEM_FAILED) {
-        perror("sem_open failed in child");
+    if (pipe(pipefd) == -1) {
+        perror("pipe failed");
+        exit(1);
+    }
+    //error handling if ncpu or tslice not provided
+    if (argc != 3){
+        perror("insufficient command line arguments provided");
         exit(1);
     }
 
-    queue(&running_queue);
-    queue(&ready_queue_1);
-    queue(&ready_queue_2);
-    queue(&ready_queue_3);
-    queue(&ready_queue_4);
-    queue(&terminated_queue);
+    //error checking if ncpu or tslice is not number
+    // if (!is_numeric(argv[1] || !is_numeric(argv[2]){
+    //     perror("ncpu and tslice must be positive numbers");
+    //     exit(1);
+    // }
 
-    while ((ready_1_count>0 + ready_2_count + ready_3_count + ready_4_count) || (running_count>0) || !sigint_received){
-        char buffer[512];
-        sem_wait(&pipe_semaphore);
-        ssize_t b_read = read(pipefd[0], buffer, sizeof(buffer));
-        sem_post(&pipe_semaphore);
-        //printf("buffer: %s\n",buffer);
-        if (b_read ==-1 && (errno == EAGAIN || errno==EWOULDBLOCK)){}
-        else if (b_read==-1){
-            perror("Error in read");
-            exit(1);
-        }
-        else{
-            buffer[sizeof(buffer) - 1] = '\0';
-            add_to_ready(buffer);
-        }
-        context_switch();
-        float sleep_time=TSLICE/1000;
-        sleep(sleep_time);
+    // ncpu and tslice cannot have leading + as well (can have whitespace leading)
+    int NCPU = atoi(argv[1]);
+    float TSLICE = strtof(argv[2],NULL);
+    pipe_semaphore = sem_open(PIPE_SEMAPHORE_NAME, O_CREAT, 0666, 1);
+    if (pipe_semaphore == SEM_FAILED) {
+        perror("sem_open failed");
+        exit(1);
     }
-    for (int i=0; i<terminated_count; i++){
-        
-        Job_PCB* j=dequeue(&terminated_queue);
-        if (j->completed == 10){
-            printf("Execution failed for command : ");
-            printf(j->job_name);
-            printf("\n");
-            free(j->job_name);
-            continue;
-        }
-        printf("Command: %s\n",j->job_name);
-        printf("PID: %d\n",j->pid);
-        printf("Wait time: %ld seconds, %ld nanoseconds\n", j->wait_time.tv_sec, j->wait_time.tv_nsec);
-        timespec completion={0,0};
-        completion.tv_sec+=(j->end_time.tv_sec-j->start_time.tv_sec);
-        completion.tv_nsec+=(j->end_time.tv_nsec-j->start_time.tv_nsec);
-        if (completion.tv_nsec<0){
-            completion.tv_sec--;
-            completion.tv_nsec+=1000000000;
-        }
-        printf("Completion time: %ld seconds, %ld nanoseconds\n", completion.tv_sec,completion.tv_nsec);
-        printf("\n");
-        free(j->job_name);
-        free(j);
+
+    if (NCPU<=0 || TSLICE<=0.0){
+        perror("invalid ncpu or tslice values");
+        exit(1);
     }
-    sem_close(pipe_semaphore);
-    exit(0);
+
+    scheduler_pid = fork();
+    if (scheduler_pid < 0){
+        perror("fork failed!");
+        exit(1);
+    }
+    else if (scheduler_pid == 0){
+        char ncpu_str[10], tslice_str[10];
+        snprintf(ncpu_str, sizeof(ncpu_str), "%d", NCPU);
+        snprintf(tslice_str, sizeof(tslice_str), "%f", TSLICE);
+        char read_fd_str[10], write_fd_str[10];
+        sprintf(read_fd_str, "%d", pipefd[0]);  //writes second argument in buffer of first argument similar to printf just writing in read_fd_str;
+        sprintf(write_fd_str, "%d", pipefd[1]);
+        char* args[] = {"./scheduler", ncpu_str, tslice_str,read_fd_str, write_fd_str, NULL};
+        // starting the scheduler with ncpu, tslice, read and write end of the pipe as arguments.
+        if (execvp(args[0], args)==-1){
+            perror("Scheduler could not be invoked");
+        }
+        exit(1);
+    }
+    close(pipefd[0]);       //closing read end not used.
+    struct sigaction sig;   //setting signal handler.
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = shell_signal_handler;
+    sigaction(SIGINT, &sig, NULL);
+    sigemptyset(&sig.sa_mask); 
+    sig.sa_flags = 0;
+    shell_loop();
+    return 0;
 }
