@@ -239,7 +239,7 @@ void add_to_ready(char* whole_command){
         clock_gettime(CLOCK_MONOTONIC,&new_job->start_time);
         clock_gettime(CLOCK_MONOTONIC,&new_job->prev_time);
         new_job->completed=-1;         
-        enqueue(&ready_queue, &new_job);
+        enqueue(&ready_queue, new_job);
         ready_count++;
     }
 }
@@ -278,7 +278,10 @@ int main(int argc, char* argv[]){
             add_to_ready(buffer);
         }
         context_switch();
-        sleep(TSLICE);       //if signal comes the sleep will continue.
+        float sleep_time=TSLICE*1000;
+        while (sleep_time>0){
+            usleep(TSLICE);
+        }
     }
     for (int i=0; i<terminated_count; i++){
         Job_PCB* j=dequeue(&terminated_queue);
