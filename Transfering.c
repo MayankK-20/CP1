@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <cstring>
 #include <chrono>
+#include <stdio.h>
+#include <list>
 #include <functional>
 
 // Structure for thread arguments for 1D parallel_for
@@ -26,7 +28,7 @@ typedef struct {
 // starting point for 1D threads
 void* thread_func_1D(void* arg) {
     thread_args_1D* data = (thread_args_1D*)arg;
-    auto lambda = *reinterpret_cast<std::function<void(int)>*>(data->lambda);
+    auto lambda = *reinterpret_cast<std::function<void(int)>*>(data->lambda);       //as the lambda passed into this function is void* we recast it.
     for (int i = data->low; i < data->high; ++i) {
         lambda(i);
     }
@@ -36,7 +38,7 @@ void* thread_func_1D(void* arg) {
 // starting point for 2D threads
 void* thread_func_2D(void* arg) {
     thread_args_2D* data = (thread_args_2D*)arg;
-    auto lambda = *reinterpret_cast<std::function<void(int, int)>*>(data->lambda);
+    auto lambda = *reinterpret_cast<std::function<void(int, int)>*>(data->lambda);  //as the lambda passed into this function is void* we recast it.
     for (int i = data->low1; i < data->high1; ++i) {
         for (int j = data->low2; j < data->high2; ++j) {
             lambda(i, j);
@@ -59,6 +61,7 @@ void parallel_for(int low, int high, std::function<void(int)> &&lambda, int numT
     int r=range%numThreads;
     chunk++;
     
+    //Below for loop gives first r functions chunk+1 size and others chunk size to optimally handle remainders.
     for (int i=0,j=0; i<numThreads; i++,j++){
         if (i==r){
             low+=(i*chunk);
@@ -75,6 +78,7 @@ void parallel_for(int low, int high, std::function<void(int)> &&lambda, int numT
         }
     }
 
+    //waiting for threads to terminate.
     for (int i=0; i<numThreads; i++){
         int rc = pthread_join(tid[i],NULL);
         if (rc){
@@ -101,6 +105,7 @@ void parallel_for(int low1, int high1, int low2, int high2,
     int r=range1%numThreads;
     chunk++;
     
+    //Below for loop gives first r functions chunk+1 size and others chunk size to optimally handle remainders.
     for (int i=0,j=0; i<numThreads; i++,j++){
         if (i==r){
             low1+=(i*chunk);
@@ -120,6 +125,7 @@ void parallel_for(int low1, int high1, int low2, int high2,
         }
     }
 
+    //waiting for threads to terminate.
     for (int i=0; i<numThreads; i++){
         int rc = pthread_join(tid[i],NULL);
         if (rc){
@@ -133,4 +139,4 @@ void parallel_for(int low1, int high1, int low2, int high2,
     printf("Execution time: %f seconds\n", elapsed.count());
 }
 
-#endif // SIMPLE_MULTITHREADER_H
+#endif
