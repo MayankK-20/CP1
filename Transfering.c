@@ -9,12 +9,6 @@
 #include <list>
 #include <functional>
 
-// Structure for thread arguments for 1D parallel_for
-typedef struct {
-    int low;            //start
-    int high;           //end
-    void* lambda;       //pointer to lambda function
-} thread_args_1D;
 
 // Structure for thread arguments for 2D parallel_for
 typedef struct {
@@ -23,39 +17,37 @@ typedef struct {
     int low2;           //start of inner for loop
     int high2;          //end of inner for loop
     void* lambda;       //pointer to lambda function
-} thread_args_2D;
+} thread_args;
 
 // starting point for 1D threads
-void* thread_func_1D(void* arg) {
-    thread_args_1D* data = (thread_args_1D*)arg;
-    auto lambda = *reinterpret_cast<std::function<void(int)>*>(data->lambda);       //as the lambda passed into this function is void* we recast it.
-    for (int i = data->low; i < data->high; ++i) {
-        lambda(i);
-    }
-    return NULL;
-}
-
-// starting point for 2D threads
-void* thread_func_2D(void* arg) {
-    thread_args_2D* data = (thread_args_2D*)arg;
-    auto lambda = *reinterpret_cast<std::function<void(int, int)>*>(data->lambda);  //as the lambda passed into this function is void* we recast it.
-    for (int i = data->low1; i < data->high1; ++i) {
-        for (int j = data->low2; j < data->high2; ++j) {
-            lambda(i, j);
+void* thread_func(void* arg) {
+    thread_args* data = (thread_args*)arg;
+    if (data->low2 < 0){
+        auto lambda = *reinterpret_cast<std::function<void(int)>*>(data->lambda);       //as the lambda passed into this function is void* we recast it.
+        for (int i = data->low1; i < data->high1; ++i) {
+            lambda(i);
         }
     }
+    else{
+        auto lambda = *reinterpret_cast<std::function<void(int, int)>*>(data->lambda);  //as the lambda passed into this function is void* we recast it.
+        for (int i = data->low1; i < data->high1; ++i) {
+            for (int j = data->low2; j < data->high2; ++j) {
+                lambda(i, j);
+            }
+        }
+    }
+
     return NULL;
 }
 
 // Parallel programming for 1D loop
 void parallel_for(int low, int high, std::function<void(int)> &&lambda, int numThreads) {
+    numThreads --;
     auto start_time = std::chrono::high_resolution_clock::now();
 
     pthread_t tid[numThreads];
-    thread_args_1D args[numThreads];
-    //pthread_t* threads = (pthread_t*)malloc(numThreads * sizeof(pthread_t));
-    //ThreadData1D* data = (ThreadData1D*)malloc(numThreads * sizeof(ThreadData1D));
-
+    thread_args args[numThreads];
+    
     int range = high-low;
     int chunk = range/numThreads;
     int r=range%numThreads;
@@ -68,10 +60,10 @@ void parallel_for(int low, int high, std::function<void(int)> &&lambda, int numT
             chunk--;
             j=0;
         }
-        args[i].low=low+(j*chunk);
-        args[i].high=((low+(j+1)*chunk) > high ? high: low+(j+1)*chunk);
+        args[i].low1=low+(j*chunk);
+        args[i].high1=((low+(j+1)*chunk) > high ? high: low+(j+1)*chunk);
         args[i].lambda=&lambda;
-        int rc = pthread_create(&tid[i],NULL,thread_func_1D,(void*)&args[i]);
+        int rc = pthread_create(&tid[i],NULL,thread_func,(void*)&args[i]);
         if (rc){
             fprintf(stderr, "Error: pthread_create() failed for thread %d\n", i);
             exit(EXIT_FAILURE);
@@ -93,12 +85,12 @@ void parallel_for(int low, int high, std::function<void(int)> &&lambda, int numT
 }
 
 // Parallel programming for 2D loop
-void parallel_for(int low1, int high1, int low2, int high2, 
-                  std::function<void(int, int)> &&lambda, int numThreads) {
+void parallel_for(int low1, int high1, int low2, int high2, std::function<void(int, int)> &&lambda, int numThreads) {
+    numThreads --;
     auto start_time = std::chrono::high_resolution_clock::now();
 
     pthread_t tid[numThreads];
-    thread_args_2D args[numThreads];
+    thread_args args[numThreads];
 
     int range1 = high1-low1;
     int chunk = range1/numThreads;
@@ -117,7 +109,7 @@ void parallel_for(int low1, int high1, int low2, int high2,
         args[i].low2=low2;
         args[i].high2=high2;
         args[i].lambda=&lambda;
-        int rc = pthread_create(&tid[i],NULL,thread_func_2D,(void*)&args[i]);
+        int rc = pthread_create(&tid[i],NULL,thread_func,(void*)&args[i]);
         //if thread creation successfull rc=0;
         if (rc){
             fprintf(stderr, "Error: pthread_create() failed for thread %d\n", i);
